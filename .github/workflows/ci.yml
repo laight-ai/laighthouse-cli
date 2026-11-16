@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: test -z "$(gofmt -l cmd cli internal output)"
+      - run: go vet ./...
+      - run: go test ./...
+      # 생성 코드가 스펙과 어긋나지 않았는지, 스펙이 잘라 낸 상태인지 확인한다.
+      - run: |
+          python3 -I scripts/gen-config.py
+          go tool oapi-codegen -config oapi-codegen.yaml api/openapi.json
+          gofmt -w internal/api/gen.go
+          git diff --exit-code -- api/openapi.json oapi-codegen.yaml internal/api/gen.go

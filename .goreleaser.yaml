@@ -1,0 +1,38 @@
+# goreleaser v2. 태그(v*)를 푸시하면 .github/workflows/release.yml이 실행한다.
+# 로컬 확인: go run github.com/goreleaser/goreleaser/v2@v2.19.0 release --snapshot --clean
+version: 2
+
+project_name: laighthouse-cli
+
+builds:
+  - id: laighthouse-cli
+    main: ./cmd/laighthouse-cli
+    binary: laighthouse-cli
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: git
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  draft: false
+  prerelease: auto
