@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -15,7 +14,7 @@ import (
 
 // 패키지 밖(다른 바이너리)에서 Options로 명령을 덧붙였을 때를 확인한다.
 
-// probeCmd는 URL을 받으면 HTTPClient로 요청을 보내 로그인 안내 경로를 탄다.
+// probeCmd는 URL을 받으면 HTTPClient의 Do를 불러 로그인 확인 경로를 탄다.
 func probeCmd(env *cli.Env) *cobra.Command {
 	return &cobra.Command{
 		Use:   "probe [URL]",
@@ -85,13 +84,12 @@ func TestMainUsesNameAndStderr(t *testing.T) {
 	if !strings.Contains(out, "lh-test login") || !strings.Contains(out, "probe") || strings.Contains(out, "laighthouse-cli") {
 		t.Errorf("도움말에 lh-test 이름과 probe 명령이 나와야 하는데:\n%s", out)
 	}
-	if code, out, errOut := runMain(t, "--version"); code != 0 || strings.TrimSpace(out) != "lh-test version v9" {
+	if code, out, errOut := runMain(t, "--version"); code != 0 || errOut != "" || strings.TrimSpace(out) != "lh-test version v9" {
 		t.Errorf("버전 출력이 다릅니다: code=%d stdout=%q stderr=%q", code, out, errOut)
 	}
 
-	srv := httptest.NewServer(http.NotFoundHandler())
-	defer srv.Close()
-	code, out, errOut = runMain(t, "--base-url", srv.URL, "probe", srv.URL+"/api/x")
+	// 로그인하지 않았으므로 요청을 보내기 전에 실패한다. 주소는 쓰이지 않는다.
+	code, out, errOut = runMain(t, "probe", "http://h.test/api/x")
 	if code != 1 || out != "" {
 		t.Fatalf("로그인 전에는 실패해야 하는데 code=%d stdout=%q", code, out)
 	}

@@ -72,8 +72,7 @@ func Main(opts Options, args []string) int {
 		binName = opts.Name
 	}
 	root, _ := newApp(opts)
-	// 비어 있으면 SetOut을 부르지 않는다. 부르면 cobra가 stderr로 보내던 안내(deprecated 경고 등)까지
-	// stdout으로 간다.
+	// SetOut(os.Stdout)을 부르면 stderr로 가던 cobra 안내까지 stdout으로 가므로, 비어 있으면 부르지 않는다.
 	if opts.Stdout != nil {
 		root.SetOut(opts.Stdout)
 	}
