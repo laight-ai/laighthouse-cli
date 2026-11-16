@@ -42,6 +42,7 @@ func probeCmd(env *cli.Env) *cobra.Command {
 func runMain(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	t.Setenv("LAIGHTHOUSE_CONFIG_DIR", t.TempDir()) // 로그인하지 않은 상태
+	t.Setenv("LAIGHTHOUSE_ENV", "")                 // 기본 환경(prod). 셸의 값을 물려받지 않는다
 	var out, errOut bytes.Buffer
 	code = cli.Main(cli.Options{
 		Name:     "lh-test",
@@ -63,7 +64,10 @@ func TestMainRunsExtensionWithEnv(t *testing.T) {
 		t.Errorf("--base-url 값과 json=false가 표로 나와야 하는데:\n%s", out)
 	}
 
-	_, out, _ = runMain(t, "--json", "--base-url", "http://h.test", "probe")
+	code, out, errOut = runMain(t, "--json", "--base-url", "http://h.test", "probe")
+	if code != 0 || errOut != "" {
+		t.Fatalf("--json도 성공해야 하는데 code=%d stderr=%q", code, errOut)
+	}
 	if strings.TrimSpace(out) != `{
   "base_url": "http://h.test"
 }` {
@@ -73,17 +77,20 @@ func TestMainRunsExtensionWithEnv(t *testing.T) {
 
 // 도움말과 버전, 로그인 안내에는 Options.Name을 쓴다. 오류는 Options.Stderr로 가고 종료 코드는 1이다.
 func TestMainUsesNameAndStderr(t *testing.T) {
-	_, out, _ := runMain(t, "--help")
+	code, out, errOut := runMain(t, "--help")
+	if code != 0 || errOut != "" {
+		t.Fatalf("도움말이 성공해야 하는데 code=%d stderr=%q", code, errOut)
+	}
 	if !strings.Contains(out, "lh-test login") || !strings.Contains(out, "probe") || strings.Contains(out, "laighthouse-cli") {
 		t.Errorf("도움말에 lh-test 이름과 probe 명령이 나와야 하는데:\n%s", out)
 	}
-	if _, out, _ := runMain(t, "--version"); strings.TrimSpace(out) != "lh-test version v9" {
-		t.Errorf("버전 출력이 다릅니다: %q", out)
+	if code, out, errOut := runMain(t, "--version"); code != 0 || strings.TrimSpace(out) != "lh-test version v9" {
+		t.Errorf("버전 출력이 다릅니다: code=%d stdout=%q stderr=%q", code, out, errOut)
 	}
 
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
-	code, out, errOut := runMain(t, "--base-url", srv.URL, "probe", srv.URL+"/api/x")
+	code, out, errOut = runMain(t, "--base-url", srv.URL, "probe", srv.URL+"/api/x")
 	if code != 1 || out != "" {
 		t.Fatalf("로그인 전에는 실패해야 하는데 code=%d stdout=%q", code, out)
 	}

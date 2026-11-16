@@ -68,26 +68,23 @@ func (g *Env) HTTPClient() (interface {
 // Main은 명령을 실행하고 종료 코드를 돌려준다.
 func Main(opts Options, args []string) int {
 	if opts.Name != "" {
-		prev := binName
 		binName = opts.Name
-		defer func() { binName = prev }()
-	}
-	stdout, stderr := opts.Stdout, opts.Stderr
-	if stdout == nil {
-		stdout = os.Stdout
-	}
-	if stderr == nil {
-		stderr = os.Stderr
 	}
 	root, _ := newApp(opts)
-	root.SetOut(stdout)
-	root.SetErr(stderr)
+	// 비어 있으면 SetOut을 부르지 않는다. 부르면 cobra가 stderr로 보내던 안내(deprecated 경고 등)까지
+	// stdout으로 간다.
+	if opts.Stdout != nil {
+		root.SetOut(opts.Stdout)
+	}
+	if opts.Stderr != nil {
+		root.SetErr(opts.Stderr)
+	}
 	root.SetArgs(args)
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		if errors.Is(err, auth.ErrNotLoggedIn) {
 			err = fmt.Errorf("%w. `%s login`을 먼저 실행하세요", err, binName)
 		}
-		fmt.Fprintln(stderr, "오류:", err)
+		fmt.Fprintln(root.ErrOrStderr(), "오류:", err)
 		return 1
 	}
 	return 0
