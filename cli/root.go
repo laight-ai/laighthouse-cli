@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 
@@ -33,6 +34,9 @@ type Options struct {
 	Version string
 	// Commands는 루트에 덧붙일 명령을 만든다. 각 함수는 공용 상태 Env를 받는다.
 	Commands []func(*Env) *cobra.Command
+	// Stdout과 Stderr는 결과와 오류를 쓸 곳이다. 비우면 os.Stdout, os.Stderr. 테스트에서 바꾼다.
+	Stdout io.Writer
+	Stderr io.Writer
 }
 
 // Env는 모든 명령이 공유하는 상태다. 전역 플래그 값은 명령을 실행할 때 채워진다.
@@ -64,15 +68,26 @@ func (g *Env) HTTPClient() (interface {
 // Main은 명령을 실행하고 종료 코드를 돌려준다.
 func Main(opts Options, args []string) int {
 	if opts.Name != "" {
+		prev := binName
 		binName = opts.Name
+		defer func() { binName = prev }()
+	}
+	stdout, stderr := opts.Stdout, opts.Stderr
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if stderr == nil {
+		stderr = os.Stderr
 	}
 	root, _ := newApp(opts)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
 	root.SetArgs(args)
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		if errors.Is(err, auth.ErrNotLoggedIn) {
 			err = fmt.Errorf("%w. `%s login`을 먼저 실행하세요", err, binName)
 		}
-		fmt.Fprintln(os.Stderr, "오류:", err)
+		fmt.Fprintln(stderr, "오류:", err)
 		return 1
 	}
 	return 0
