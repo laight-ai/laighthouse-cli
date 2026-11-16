@@ -15,7 +15,7 @@ import (
 
 // 생성된 클라이언트가 auth.Session을 통해 Bearer 헤더를 붙여 /api 경로를 부르는지 확인한다.
 func TestGeneratedClientUsesSession(t *testing.T) {
-	const token = "eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9.sig" // exp 2100년
+	const token = "eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9.sig" // 서명 없는 가짜 토큰, exp 2100년. gitleaks:allow
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/resources", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+token {
