@@ -34,7 +34,8 @@ type Options struct {
 	Version string
 	// Commands는 루트에 덧붙일 명령을 만든다. 각 함수는 공용 상태 Env를 받는다.
 	Commands []func(*Env) *cobra.Command
-	// Stdout과 Stderr는 결과와 오류를 쓸 곳이다. 비우면 os.Stdout, os.Stderr. 테스트에서 바꾼다.
+	// Stdout과 Stderr를 비우면 os.Stdout, os.Stderr에 쓴다. Stdout을 주면 cobra 안내(deprecated 경고 등)도
+	// 그쪽으로 간다.
 	Stdout io.Writer
 	Stderr io.Writer
 }

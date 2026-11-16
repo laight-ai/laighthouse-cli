@@ -13,9 +13,9 @@ import (
 	"github.com/laight-ai/laighthouse-cli/cli"
 )
 
-// 패키지 밖(ops 같은 다른 바이너리)에서 Options로 명령을 덧붙였을 때를 확인한다.
+// 패키지 밖(다른 바이너리)에서 Options로 명령을 덧붙였을 때를 확인한다.
 
-// probeCmd는 Env에서 받은 값을 Env.Out으로 쓴다. 요청 주소를 받으면 HTTPClient로 GET을 보낸다.
+// probeCmd는 URL을 받으면 HTTPClient로 요청을 보내 로그인 안내 경로를 탄다.
 func probeCmd(env *cli.Env) *cobra.Command {
 	return &cobra.Command{
 		Use:   "probe [URL]",
@@ -60,7 +60,8 @@ func TestMainRunsExtensionWithEnv(t *testing.T) {
 	if code != 0 || errOut != "" {
 		t.Fatalf("성공해야 하는데 code=%d stderr=%q", code, errOut)
 	}
-	if !strings.Contains(out, "http://h.test") || !strings.Contains(out, "false") {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 2 || strings.Join(strings.Fields(lines[1]), " ") != "http://h.test false" {
 		t.Errorf("--base-url 값과 json=false가 표로 나와야 하는데:\n%s", out)
 	}
 
