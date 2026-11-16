@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 
@@ -33,6 +34,10 @@ type Options struct {
 	Version string
 	// Commands는 루트에 덧붙일 명령을 만든다. 각 함수는 공용 상태 Env를 받는다.
 	Commands []func(*Env) *cobra.Command
+	// Stdout과 Stderr를 비우면 os.Stdout, os.Stderr에 쓴다. Stdout을 주면 cobra 안내(deprecated 경고 등)도
+	// 그쪽으로 간다.
+	Stdout io.Writer
+	Stderr io.Writer
 }
 
 // Env는 모든 명령이 공유하는 상태다. 전역 플래그 값은 명령을 실행할 때 채워진다.
@@ -67,12 +72,19 @@ func Main(opts Options, args []string) int {
 		binName = opts.Name
 	}
 	root, _ := newApp(opts)
+	// SetOut(os.Stdout)을 부르면 stderr로 가던 cobra 안내까지 stdout으로 가므로, 비어 있으면 부르지 않는다.
+	if opts.Stdout != nil {
+		root.SetOut(opts.Stdout)
+	}
+	if opts.Stderr != nil {
+		root.SetErr(opts.Stderr)
+	}
 	root.SetArgs(args)
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		if errors.Is(err, auth.ErrNotLoggedIn) {
 			err = fmt.Errorf("%w. `%s login`을 먼저 실행하세요", err, binName)
 		}
-		fmt.Fprintln(os.Stderr, "오류:", err)
+		fmt.Fprintln(root.ErrOrStderr(), "오류:", err)
 		return 1
 	}
 	return 0
