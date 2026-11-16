@@ -1,0 +1,2 @@
+# 서명 없는 가짜 테스트 토큰. 이후 커밋에서는 그 줄에 gitleaks:allow를 달았다.
+1f00b088597e72d9ccfc853ee1417f717ed3a3ae:internal/api/client_test.go:generic-api-key:18
