@@ -20,6 +20,8 @@ type Session struct {
 	Store  *Store
 	Client *Client
 	Now    func() time.Time
+	// Header는 요청마다 덧붙일 헤더다. 요청에 이미 있는 이름은 건드리지 않는다.
+	Header http.Header
 
 	tokens Tokens
 	loaded bool
@@ -81,6 +83,11 @@ func (s *Session) Do(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	for k, v := range s.Header {
+		if k = http.CanonicalHeaderKey(k); req.Header[k] == nil {
+			req.Header[k] = v
+		}
+	}
 	resp, err := s.Client.http().Do(req)
 	if err != nil {
 		return nil, err

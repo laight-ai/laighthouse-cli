@@ -18,6 +18,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/laight-ai/laighthouse-cli/internal/auth"
 	"github.com/laight-ai/laighthouse-cli/internal/config"
@@ -38,6 +39,13 @@ type Options struct {
 	// 그쪽으로 간다.
 	Stdout io.Writer
 	Stderr io.Writer
+	// Flags는 루트에 전역 플래그를 덧붙인다.
+	Flags func(*pflag.FlagSet)
+	// Header는 로그인 세션을 거치는 API 요청(생성 클라이언트, api 명령, HTTPClient)에 붙일 헤더를 돌려준다.
+	// 로그인·토큰 갱신·로그아웃 요청에는 붙지 않는다. 플래그를 읽은 뒤 명령이 API
+	// 클라이언트를 만들 때 한 번 부르므로 Flags로 붙인 플래그 값을 쓸 수 있고, 그 클라이언트의 요청에는 같은
+	// 헤더가 실린다. 요청에 같은 이름의 헤더가 이미 있으면(api -H) 그 값을 쓴다.
+	Header func() http.Header
 }
 
 // Env는 모든 명령이 공유하는 상태다. 전역 플래그 값은 명령을 실행할 때 채워진다.
@@ -46,8 +54,9 @@ type Env struct {
 	baseURL string
 	json    bool
 
-	env config.Env
-	out output.Printer
+	env    config.Env
+	out    output.Printer
+	header func() http.Header
 }
 
 // BaseURL은 요청을 보낼 서비스 주소다.
@@ -109,7 +118,7 @@ func (g *Env) resolveEnv() error {
 }
 
 func newApp(opts Options) (*cobra.Command, *Env) {
-	g := &Env{}
+	g := &Env{header: opts.Header}
 
 	root := &cobra.Command{
 		Use:     binName,
@@ -146,6 +155,9 @@ func newApp(opts Options) (*cobra.Command, *Env) {
 	pf.StringVar(&g.envName, "env", defaultEnv, "접속 환경 (dev|prod). 환경변수 LAIGHTHOUSE_ENV로도 지정")
 	pf.StringVar(&g.baseURL, "base-url", "", "서비스 주소를 직접 지정 (로컬 개발용, 기본값은 --env에 따름)")
 	pf.BoolVar(&g.json, "json", false, "결과를 표 대신 JSON으로 출력")
+	if opts.Flags != nil {
+		opts.Flags(pf)
+	}
 
 	root.AddCommand(
 		newLoginCmd(g),

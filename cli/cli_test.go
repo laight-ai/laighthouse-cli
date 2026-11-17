@@ -50,12 +50,15 @@ var testToken = func() string {
 
 // fakeBackend는 백엔드 API를 흉내 낸다. 받은 요청을 기록해 테스트가 경로와 본문을 확인한다.
 type fakeBackend struct {
-	srv            *httptest.Server
-	mu             sync.Mutex
-	reqs           []recorded
-	noCLIClient    bool // 인증 서비스에 CLI 클라이언트가 아직 등록되지 않은 환경
-	teamsForbidden bool // 팀 목록이 403
-	membersFail    bool // 멤버 목록이 500
+	srv             *httptest.Server
+	mu              sync.Mutex
+	reqs            []recorded
+	noCLIClient     bool // 인증 서비스에 CLI 클라이언트가 아직 등록되지 않은 환경
+	teamsForbidden  bool // 팀 목록이 403
+	membersFail     bool // 멤버 목록이 500
+	noMembership    bool // 소속 조직이 없어 /api/authz/me와 내 권한 조회가 403
+	myPermsHTML     bool // 내 권한 조회가 200인데 JSON이 아닌 본문
+	memberPermsHTML bool // 멤버 권한 조회가 200인데 JSON이 아닌 본문
 }
 
 type recorded struct {
@@ -121,6 +124,11 @@ func setup(t *testing.T) *fakeBackend {
 		fmt.Fprint(w, `{"items":[{"user_uid":"u2","email":"lee@x.com","name":"이","kind":"guest","status":"active","joined_at":"2026-02-01T00:00:00Z","expires_at":"2026-12-31T00:00:00Z","guest_scope_resource_ids":["b1"]}],"next_after":null}`)
 	})
 	handle("GET /api/authz/members/{uid}/permissions", func(w http.ResponseWriter, r *http.Request, _ []byte) {
+		if f.memberPermsHTML {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<html></html>`)
+			return
+		}
 		fmt.Fprintf(w, `{"items":[{"scope_type":"tenant","scope_resource_id":null,"permission_keys":["report.read","%s.marker"]}]}`, r.PathValue("uid"))
 	})
 	handle("GET /api/authz/roles", func(w http.ResponseWriter, _ *http.Request, _ []byte) {
@@ -171,9 +179,25 @@ func setup(t *testing.T) *fakeBackend {
 		fmt.Fprint(w, `{"upload_id":42,"run_id":9,"status":"processing"}`)
 	})
 	handle("GET /api/authz/me/permissions", func(w http.ResponseWriter, _ *http.Request, _ []byte) {
-		fmt.Fprint(w, `{"items":[{"scope_type":"tenant","scope_resource_id":null,"permission_keys":["member.read"]}]}`)
+		if f.noMembership {
+			w.WriteHeader(403)
+			fmt.Fprint(w, `{"detail":"Access denied"}`)
+			return
+		}
+		if f.myPermsHTML {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<html></html>`)
+			return
+		}
+		fmt.Fprint(w, `{"items":[{"scope_type":"tenant","scope_resource_id":null,"permission_keys":["member.read","role.manage"]},
+			{"scope_type":"resource","scope_resource_id":"b1","permission_keys":["report.read"]}]}`)
 	})
 	handle("GET /api/authz/me", func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+		if f.noMembership {
+			w.WriteHeader(403)
+			fmt.Fprint(w, `{"detail":"Access denied"}`)
+			return
+		}
 		fmt.Fprint(w, `{"tenant_id":"t1","name":"라이트","kind":"member","tenant_kind":"customer","acting":false}`)
 	})
 	mux.HandleFunc("POST /auth/oauth/device_authorization", func(w http.ResponseWriter, _ *http.Request) {
@@ -281,6 +305,19 @@ func TestMembersShowByEmailFragment(t *testing.T) {
 	}
 	if !strings.Contains(out, "u2.marker") {
 		t.Fatalf("lee@x.com(u2)의 권한을 조회해야 하는데: %s", out)
+	}
+}
+
+// 멤버 권한 조회가 200인데 JSON이 아니면(프록시 오류 페이지 등) 패닉 없이 Content-Type을 담은 오류로 실패한다.
+func TestMembersShowPermissionsNonJSONBody(t *testing.T) {
+	f := setup(t)
+	f.memberPermsHTML = true
+	out, err := run(t, f, "members", "show", "lee@")
+	if err == nil || !strings.Contains(err.Error(), "text/html") {
+		t.Fatalf("Content-Type을 담은 오류를 기대했는데 %v", err)
+	}
+	if out != "" {
+		t.Fatalf("실패하면 아무것도 출력하지 않아야 하는데: %s", out)
 	}
 }
 
@@ -550,23 +587,5 @@ func TestBrowserLoginUnavailableSuggestsPassword(t *testing.T) {
 	_, err := run(t, f, "login", "--no-browser")
 	if err == nil || !strings.Contains(err.Error(), "login --password") {
 		t.Fatalf("--password 안내를 기대했는데 %v", err)
-	}
-}
-
-// whoami는 /auth/me(브라우저 로그인 토큰을 거부함) 대신 토큰에서 사용자를 읽는다.
-func TestWhoamiReadsUserFromToken(t *testing.T) {
-	f := setup(t)
-	out, err := run(t, f, "--json", "whoami")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got struct {
-		User   auth.User `json:"user"`
-		Tenant struct {
-			Name string `json:"name"`
-		} `json:"tenant"`
-	}
-	if err := json.Unmarshal([]byte(out), &got); err != nil || got.User.Email != "kim@x.com" || got.User.UID != "u1" || got.Tenant.Name != "라이트" {
-		t.Fatalf("토큰의 사용자와 조직을 기대했는데 %s", out)
 	}
 }

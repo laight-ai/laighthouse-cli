@@ -100,6 +100,9 @@ GET /api/authz/members/{uid}/permissions
 			if err := CheckStatus(resp.HTTPResponse, resp.Body); err != nil {
 				return err
 			}
+			if resp.JSON200 == nil {
+				return fmt.Errorf("권한 응답을 JSON으로 읽지 못했습니다 (Content-Type: %s)", resp.HTTPResponse.Header.Get("Content-Type"))
+			}
 			if g.json {
 				return g.out.JSONValue(map[string]any{"member": m, "permissions": resp.JSON200})
 			}
@@ -110,19 +113,24 @@ GET /api/authz/members/{uid}/permissions
 				fmt.Fprintf(w, "만료일: %s\n", m.ExpiresAt.Format(time.DateOnly))
 			}
 			fmt.Fprintln(w, "\n권한:")
-			rows := make([][]string, 0, len(resp.JSON200.Items))
-			for _, s := range resp.JSON200.Items {
-				scope := "조직 전체"
-				if s.ScopeType == api.BindingScopeTypeResource {
-					scope = "브랜드 " + Deref(s.ScopeResourceId)
-				}
-				keys := make([]string, 0, len(s.PermissionKeys))
-				for _, k := range s.PermissionKeys {
-					keys = append(keys, string(k))
-				}
-				rows = append(rows, []string{scope, strings.Join(keys, ", ")})
-			}
-			return g.out.Table(nil, []string{"범위", "권한 키"}, rows)
+			return g.out.Table(nil, []string{"범위", "권한 키"}, heldScopeRows(resp.JSON200.Items))
 		},
 	}
+}
+
+// heldScopeRows는 가진 권한을 범위마다 한 줄(범위, 권한 키 목록)로 만든다.
+func heldScopeRows(items []api.HeldScopeOutput) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, s := range items {
+		scope := "조직 전체"
+		if s.ScopeType == api.BindingScopeTypeResource {
+			scope = "브랜드 " + Deref(s.ScopeResourceId)
+		}
+		keys := make([]string, 0, len(s.PermissionKeys))
+		for _, k := range s.PermissionKeys {
+			keys = append(keys, string(k))
+		}
+		rows = append(rows, []string{scope, strings.Join(keys, ", ")})
+	}
+	return rows
 }
