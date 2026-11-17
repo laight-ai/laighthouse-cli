@@ -56,7 +56,7 @@ type Brand struct {
 	Name string `json:"name"`
 }
 
-// File은 config.json에 저장하는 사용자 설정이다.
+// File은 설정 디렉터리에 저장하는 사용자 설정이다.
 type File struct {
 	DefaultBrand map[Env]Brand `json:"default_brand,omitempty"`
 	// DefaultBrandByScope는 scope(cli.Options.Scope)마다 따로 정한 기본 브랜드다. config.json이 아니라
