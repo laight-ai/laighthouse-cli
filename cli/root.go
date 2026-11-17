@@ -46,6 +46,9 @@ type Options struct {
 	// 클라이언트를 만들 때 한 번 부르므로 Flags로 붙인 플래그 값을 쓸 수 있고, 그 클라이언트의 요청에는 같은
 	// 헤더가 실린다. 요청에 같은 이름의 헤더가 이미 있으면(api -H) 그 값을 쓴다.
 	Header func() http.Header
+	// Scope는 기본 브랜드처럼 로컬에 저장하는 설정을 나눌 이름을 돌려준다. 플래그를 읽은 뒤 부르므로 Flags로
+	// 붙인 플래그 값을 쓸 수 있다. 비우거나 빈 문자열을 돌려주면 지금처럼 환경마다 하나를 쓴다.
+	Scope func() string
 }
 
 // Env는 모든 명령이 공유하는 상태다. 전역 플래그 값은 명령을 실행할 때 채워진다.
@@ -57,6 +60,7 @@ type Env struct {
 	env    config.Env
 	out    output.Printer
 	header func() http.Header
+	scope  func() string
 }
 
 // BaseURL은 요청을 보낼 서비스 주소다.
@@ -104,6 +108,22 @@ func newRoot(version string) *cobra.Command {
 	return root
 }
 
+// scopeName은 Options.Scope가 정한 이름이다. 없으면 빈 문자열.
+func (g *Env) scopeName() string {
+	if g.scope == nil {
+		return ""
+	}
+	return g.scope()
+}
+
+// brandSlot은 기본 브랜드를 저장하는 칸을 안내 문구용으로 적는다. 예: "dev 환경", "dev 환경(t9)".
+func (g *Env) brandSlot() string {
+	if s := g.scopeName(); s != "" {
+		return fmt.Sprintf("%s 환경(%s)", g.env, s)
+	}
+	return fmt.Sprintf("%s 환경", g.env)
+}
+
 // resolveEnv는 --env와 --base-url을 읽어 접속 환경과 주소를 정한다.
 func (g *Env) resolveEnv() error {
 	env, err := config.ParseEnv(g.envName)
@@ -118,7 +138,7 @@ func (g *Env) resolveEnv() error {
 }
 
 func newApp(opts Options) (*cobra.Command, *Env) {
-	g := &Env{header: opts.Header}
+	g := &Env{header: opts.Header, scope: opts.Scope}
 
 	root := &cobra.Command{
 		Use:     binName,

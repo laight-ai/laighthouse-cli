@@ -56,35 +56,59 @@ type Brand struct {
 	Name string `json:"name"`
 }
 
-// File은 config.json에 저장하는 사용자 설정이다.
+// File은 설정 디렉터리에 저장하는 사용자 설정이다.
 type File struct {
 	DefaultBrand map[Env]Brand `json:"default_brand,omitempty"`
+	// DefaultBrandByScope는 scope(cli.Options.Scope)마다 따로 정한 기본 브랜드다. config.json이 아니라
+	// scoped-brands.json에 둔다. scope를 모르는 이전 버전이 config.json을 읽고 통째로 다시 쓰면 모르는
+	// 필드가 지워지기 때문이다.
+	DefaultBrandByScope map[string]map[Env]Brand `json:"-"`
 }
 
-func filePath() (string, error) {
+// DefaultBrandIn은 scope의 기본 브랜드를 돌려준다. scope가 비면 DefaultBrand를 쓴다. scope에 정한 것이
+// 없어도 DefaultBrand로 넘어가지 않는다. scope가 다르면 브랜드도 다른 조직의 것일 수 있어서다.
+func (f File) DefaultBrandIn(scope string, env Env) (Brand, bool) {
+	if scope == "" {
+		b, ok := f.DefaultBrand[env]
+		return b, ok
+	}
+	b, ok := f.DefaultBrandByScope[scope][env]
+	return b, ok
+}
+
+// SetDefaultBrandIn은 scope의 기본 브랜드를 정한다. scope가 비면 DefaultBrand에 쓴다.
+func (f *File) SetDefaultBrandIn(scope string, env Env, b Brand) {
+	if scope == "" {
+		f.DefaultBrand[env] = b
+		return
+	}
+	if f.DefaultBrandByScope == nil {
+		f.DefaultBrandByScope = map[string]map[Env]Brand{}
+	}
+	if f.DefaultBrandByScope[scope] == nil {
+		f.DefaultBrandByScope[scope] = map[Env]Brand{}
+	}
+	f.DefaultBrandByScope[scope][env] = b
+}
+
+func pathOf(name string) (string, error) {
 	dir, err := Dir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "config.json"), nil
+	return filepath.Join(dir, name), nil
 }
 
-// Load는 config.json을 읽는다. 파일이 없으면 빈 설정을 돌려준다.
+const scopedBrandsFile = "scoped-brands.json"
+
+// Load는 config.json과 scoped-brands.json을 읽는다. 파일이 없으면 빈 설정을 돌려준다.
 func Load() (File, error) {
 	f := File{DefaultBrand: map[Env]Brand{}}
-	p, err := filePath()
-	if err != nil {
+	if err := readJSON("config.json", &f); err != nil {
 		return f, err
 	}
-	b, err := os.ReadFile(p)
-	if errors.Is(err, os.ErrNotExist) {
-		return f, nil
-	}
-	if err != nil {
+	if err := readJSON(scopedBrandsFile, &f.DefaultBrandByScope); err != nil {
 		return f, err
-	}
-	if err := json.Unmarshal(b, &f); err != nil {
-		return f, fmt.Errorf("%s 파일을 읽을 수 없습니다: %w", p, err)
 	}
 	if f.DefaultBrand == nil {
 		f.DefaultBrand = map[Env]Brand{}
@@ -92,16 +116,45 @@ func Load() (File, error) {
 	return f, nil
 }
 
-// Save는 설정을 config.json에 쓴다.
+// readJSON은 설정 디렉터리의 name 파일을 v로 읽는다. 파일이 없으면 v를 그대로 둔다.
+func readJSON(name string, v any) error {
+	p, err := pathOf(name)
+	if err != nil {
+		return err
+	}
+	b, err := os.ReadFile(p)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(b, v); err != nil {
+		return fmt.Errorf("%s 파일을 읽을 수 없습니다: %w", p, err)
+	}
+	return nil
+}
+
+// Save는 설정을 config.json에, scope마다 정한 기본 브랜드가 있으면 scoped-brands.json에 쓴다.
 func (f File) Save() error {
-	p, err := filePath()
+	if err := writeJSON("config.json", f); err != nil {
+		return err
+	}
+	if len(f.DefaultBrandByScope) == 0 {
+		return nil
+	}
+	return writeJSON(scopedBrandsFile, f.DefaultBrandByScope)
+}
+
+func writeJSON(name string, v any) error {
+	p, err := pathOf(name)
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(f, "", "  ")
+	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}

@@ -44,7 +44,7 @@ func newBrandsListCmd(g *Env) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			current := cfg.DefaultBrand[g.env].ID
+			current, _ := cfg.DefaultBrandIn(g.scopeName(), g.env)
 			rows := make([][]string, 0, len(*resp.JSON200))
 			for _, b := range *resp.JSON200 {
 				feats := make([]string, 0, len(b.EnabledFeatures))
@@ -52,7 +52,7 @@ func newBrandsListCmd(g *Env) *cobra.Command {
 					feats = append(feats, string(f))
 				}
 				mark := ""
-				if b.Uid == current {
+				if b.Uid == current.ID {
 					mark = "*"
 				}
 				rows = append(rows, []string{mark, b.Uid, b.Name, string(b.BrandType), string(b.Country), strings.Join(feats, ",")})
@@ -67,6 +67,7 @@ func newBrandsUseCmd(g *Env) *cobra.Command {
 		Use:   "use [이름|ID]",
 		Short: "기본 브랜드 지정 (인자 없이 치면 현재 값 표시)",
 		Long: `보고서·업로드 명령이 --brand 없이 쓸 기본 브랜드를 정합니다. 환경(dev/prod)마다 따로 저장됩니다.
+조직을 바꿔 실행하는 확장 명령에서는 그 조직(scope)마다 따로 저장됩니다.
 이름은 일부만 적어도 하나로 정해지면 됩니다. 인자 없이 치면 지금 기본 브랜드를 보여 줍니다.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -76,7 +77,7 @@ func newBrandsUseCmd(g *Env) *cobra.Command {
 			}
 			w := cmd.OutOrStdout()
 			if len(args) == 0 {
-				b, ok := cfg.DefaultBrand[g.env]
+				b, ok := cfg.DefaultBrandIn(g.scopeName(), g.env)
 				if g.json {
 					if !ok {
 						return g.out.JSONValue(nil)
@@ -84,7 +85,7 @@ func newBrandsUseCmd(g *Env) *cobra.Command {
 					return g.out.JSONValue(b)
 				}
 				if !ok {
-					fmt.Fprintf(w, "%s 환경에 기본 브랜드가 없습니다. '"+binName+" brands use <이름>'으로 정하세요.\n", g.env)
+					fmt.Fprintf(w, "%s에 기본 브랜드가 없습니다. '"+binName+" brands use <이름>'으로 정하세요.\n", g.brandSlot())
 					return nil
 				}
 				fmt.Fprintf(w, "%s [%s]\n", b.Name, b.ID)
@@ -99,14 +100,15 @@ func newBrandsUseCmd(g *Env) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cfg.DefaultBrand[g.env] = config.Brand{ID: b.Uid, Name: b.Name}
+			chosen := config.Brand{ID: b.Uid, Name: b.Name}
+			cfg.SetDefaultBrandIn(g.scopeName(), g.env, chosen)
 			if err := cfg.Save(); err != nil {
 				return err
 			}
 			if g.json {
-				return g.out.JSONValue(cfg.DefaultBrand[g.env])
+				return g.out.JSONValue(chosen)
 			}
-			fmt.Fprintf(w, "%s 환경의 기본 브랜드를 %s [%s](으)로 정했습니다.\n", g.env, b.Name, b.Uid)
+			fmt.Fprintf(w, "%s의 기본 브랜드를 %s [%s](으)로 정했습니다.\n", g.brandSlot(), b.Name, b.Uid)
 			return nil
 		},
 	}
