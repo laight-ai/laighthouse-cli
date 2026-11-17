@@ -16,6 +16,7 @@ GitHub Releases에서 OS별 바이너리를 직접 받을 수도 있습니다.
 laighthouse-cli login                      # 브라우저 로그인 (prod)
 laighthouse-cli login --password           # 이메일·비밀번호
 laighthouse-cli whoami
+laighthouse-cli whoami --permissions       # 내가 가진 권한 키 (범위별)
 laighthouse-cli brands                     # 브랜드 목록
 laighthouse-cli brands use 브랜드A          # 기본 브랜드 지정 → 이후 --brand 생략
 laighthouse-cli brands access              # 기본 브랜드에 접근할 수 있는 사람과 팀

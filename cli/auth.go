@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/laight-ai/laighthouse-cli/internal/api"
 	"github.com/laight-ai/laighthouse-cli/internal/auth"
 	"github.com/laight-ai/laighthouse-cli/internal/config"
 )
@@ -197,11 +198,15 @@ type tenantMembership struct {
 }
 
 func newWhoamiCmd(g *Env) *cobra.Command {
-	return &cobra.Command{
+	var withPermissions bool
+	cmd := &cobra.Command{
 		Use:   "whoami",
 		Short: "로그인한 계정, 소속 조직, 기본 브랜드 확인",
 		Long: `로그인한 계정(이메일, 이름, 역할)과 소속 조직(테넌트), 'brands use'로 정한 기본 브랜드를 보여 줍니다.
-토큰이 만료됐으면 갱신을 시도하므로 로그인 상태 점검에도 쓸 수 있습니다.`,
+토큰이 만료됐으면 갱신을 시도하므로 로그인 상태 점검에도 쓸 수 있습니다.
+
+--permissions를 주면 내가 가진 권한 키를 범위(조직 전체 또는 브랜드)별로 함께 보여 줍니다.
+GET /api/authz/me/permissions`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			s, err := g.session()
@@ -229,9 +234,28 @@ func newWhoamiCmd(g *Env) *cobra.Command {
 			if b, ok := cfg.DefaultBrand[g.env]; ok {
 				brand = &b
 			}
+			var perms *api.HeldPermissionsOutput
+			if withPermissions {
+				c, err := api.New(g.baseURL, s)
+				if err != nil {
+					return err
+				}
+				resp, err := c.GetMyHeldPermissionsWithResponse(ctx)
+				if err != nil {
+					return err
+				}
+				if err := CheckStatus(resp.HTTPResponse, resp.Body); err != nil {
+					return err
+				}
+				perms = resp.JSON200
+			}
 
 			if g.json {
-				return g.out.JSONValue(map[string]any{"env": g.env, "user": user, "tenant": tenant, "default_brand": brand})
+				v := map[string]any{"env": g.env, "user": user, "tenant": tenant, "default_brand": brand}
+				if perms != nil {
+					v["permissions"] = perms
+				}
+				return g.out.JSONValue(v)
 			}
 			w := cmd.OutOrStdout()
 			fmt.Fprintf(w, "환경:   %s\n", g.env)
@@ -250,9 +274,15 @@ func newWhoamiCmd(g *Env) *cobra.Command {
 			} else {
 				fmt.Fprintf(w, "브랜드: %s [%s]\n", brand.Name, brand.ID)
 			}
+			if perms != nil {
+				fmt.Fprintln(w, "\n권한:")
+				return g.out.Table(nil, []string{"범위", "권한 키"}, heldScopeRows(perms.Items))
+			}
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&withPermissions, "permissions", false, "내가 가진 권한 키를 범위별로 함께 표시")
+	return cmd
 }
 
 // fetchTenant는 소속 조직을 조회한다. 403은 "소속 조직 없음"이므로 nil을 돌려준다.

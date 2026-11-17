@@ -56,6 +56,7 @@ type fakeBackend struct {
 	noCLIClient    bool // 인증 서비스에 CLI 클라이언트가 아직 등록되지 않은 환경
 	teamsForbidden bool // 팀 목록이 403
 	membersFail    bool // 멤버 목록이 500
+	myPermsDenied  bool // 내 권한 조회가 403
 }
 
 type recorded struct {
@@ -171,7 +172,13 @@ func setup(t *testing.T) *fakeBackend {
 		fmt.Fprint(w, `{"upload_id":42,"run_id":9,"status":"processing"}`)
 	})
 	handle("GET /api/authz/me/permissions", func(w http.ResponseWriter, _ *http.Request, _ []byte) {
-		fmt.Fprint(w, `{"items":[{"scope_type":"tenant","scope_resource_id":null,"permission_keys":["member.read"]}]}`)
+		if f.myPermsDenied {
+			w.WriteHeader(403)
+			fmt.Fprint(w, `{"detail":"Permission denied","reason":"no_membership"}`)
+			return
+		}
+		fmt.Fprint(w, `{"items":[{"scope_type":"tenant","scope_resource_id":null,"permission_keys":["member.read","role.manage"]},
+			{"scope_type":"resource","scope_resource_id":"b1","permission_keys":["report.read"]}]}`)
 	})
 	handle("GET /api/authz/me", func(w http.ResponseWriter, _ *http.Request, _ []byte) {
 		fmt.Fprint(w, `{"tenant_id":"t1","name":"라이트","kind":"member","tenant_kind":"customer","acting":false}`)
@@ -568,5 +575,82 @@ func TestWhoamiReadsUserFromToken(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(out), &got); err != nil || got.User.Email != "kim@x.com" || got.User.UID != "u1" || got.Tenant.Name != "라이트" {
 		t.Fatalf("토큰의 사용자와 조직을 기대했는데 %s", out)
+	}
+}
+
+// whoami --permissions는 계정 정보 아래에 내 권한 키를 범위별로 한 줄씩 묶어 보여 준다.
+func TestWhoamiPermissionsGroupsByScope(t *testing.T) {
+	f := setup(t)
+	out, err := run(t, f, "whoami", "--permissions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "kim@x.com") {
+		t.Fatalf("계정 정보도 그대로 나와야 하는데: %s", out)
+	}
+	rows := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		if scope, keys, ok := strings.Cut(line, "  "); ok {
+			rows[strings.TrimSpace(scope)] = strings.TrimSpace(keys)
+		}
+	}
+	if rows["조직 전체"] != "member.read, role.manage" || rows["브랜드 b1"] != "report.read" {
+		t.Fatalf("범위별 권한 키를 기대했는데: %s", out)
+	}
+}
+
+func TestWhoamiPermissionsJSON(t *testing.T) {
+	f := setup(t)
+	out, err := run(t, f, "--json", "whoami", "--permissions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		User        auth.User `json:"user"`
+		Permissions struct {
+			Items []struct {
+				ScopeType       string   `json:"scope_type"`
+				ScopeResourceID *string  `json:"scope_resource_id"`
+				PermissionKeys  []string `json:"permission_keys"`
+			} `json:"items"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("JSON이어야 하는데 %v: %s", err, out)
+	}
+	items := got.Permissions.Items
+	if got.User.Email != "kim@x.com" || len(items) != 2 ||
+		items[0].ScopeType != "tenant" || strings.Join(items[0].PermissionKeys, ",") != "member.read,role.manage" ||
+		items[1].ScopeType != "resource" || items[1].ScopeResourceID == nil || *items[1].ScopeResourceID != "b1" ||
+		strings.Join(items[1].PermissionKeys, ",") != "report.read" {
+		t.Fatalf("사용자와 범위별 권한 응답을 그대로 기대했는데: %s", out)
+	}
+}
+
+// 권한 조회가 거절되면 계정 정보만 반쯤 찍고 성공으로 끝내지 않는다.
+func TestWhoamiPermissionsForbidden(t *testing.T) {
+	f := setup(t)
+	f.myPermsDenied = true
+	out, err := run(t, f, "whoami", "--permissions")
+	if err == nil || !strings.Contains(err.Error(), "권한 없음(403)") || !strings.Contains(err.Error(), "no_membership") {
+		t.Fatalf("403 detail/reason을 기대했는데 %v", err)
+	}
+	if out != "" {
+		t.Fatalf("실패하면 아무것도 출력하지 않아야 하는데: %s", out)
+	}
+}
+
+// --permissions 없는 whoami는 권한 API를 부르지 않고, JSON에도 permissions가 없다.
+func TestWhoamiWithoutPermissionsSkipsLookup(t *testing.T) {
+	f := setup(t)
+	out, err := run(t, f, "--json", "whoami")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(f.seen("GET", "/api/authz/me/permissions")); n != 0 {
+		t.Fatalf("권한 API를 부르지 않아야 하는데 %d번 불렀습니다", n)
+	}
+	if strings.Contains(out, `"permissions"`) {
+		t.Fatalf("permissions 키가 없어야 하는데: %s", out)
 	}
 }
