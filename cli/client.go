@@ -121,7 +121,7 @@ func (g *Env) brand(ctx context.Context, c *api.ClientWithResponses, flag string
 		if err != nil {
 			return "", err
 		}
-		if b, ok := f.DefaultBrand[g.env]; ok {
+		if b, ok := f.DefaultBrandIn(g.scopeName(), g.env); ok {
 			return b.ID, nil
 		}
 		return "", errors.New("브랜드를 정해야 합니다. '" + binName + " brands use <이름>'으로 기본 브랜드를 정하거나 --brand를 붙이세요")

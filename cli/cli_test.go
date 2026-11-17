@@ -59,6 +59,7 @@ type fakeBackend struct {
 	noMembership    bool // 소속 조직이 없어 /api/authz/me와 내 권한 조회가 403
 	myPermsHTML     bool // 내 권한 조회가 200인데 JSON이 아닌 본문
 	memberPermsHTML bool // 멤버 권한 조회가 200인데 JSON이 아닌 본문
+	acting          bool // /api/authz/me가 대행 중인 조직을 돌려줌
 }
 
 type recorded struct {
@@ -198,7 +199,7 @@ func setup(t *testing.T) *fakeBackend {
 			fmt.Fprint(w, `{"detail":"Access denied"}`)
 			return
 		}
-		fmt.Fprint(w, `{"tenant_id":"t1","name":"라이트","kind":"member","tenant_kind":"customer","acting":false}`)
+		fmt.Fprintf(w, `{"tenant_id":"t1","name":"라이트","kind":"member","tenant_kind":"customer","acting":%t}`, f.acting)
 	})
 	mux.HandleFunc("POST /auth/oauth/device_authorization", func(w http.ResponseWriter, _ *http.Request) {
 		if f.noCLIClient {

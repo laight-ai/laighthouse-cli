@@ -235,7 +235,7 @@ GET /api/authz/me/permissions`,
 				return err
 			}
 			var brand *config.Brand
-			if b, ok := cfg.DefaultBrand[g.env]; ok {
+			if b, ok := cfg.DefaultBrandIn(g.scopeName(), g.env); ok {
 				brand = &b
 			}
 			var perms *api.HeldPermissionsOutput
@@ -275,7 +275,11 @@ GET /api/authz/me/permissions`,
 			if tenant == nil {
 				fmt.Fprintln(w, "조직:   없음 (초대를 받아야 합니다)")
 			} else {
-				fmt.Fprintf(w, "조직:   %s [%s] (%s)\n", tenant.Name, tenant.TenantID, tenant.Kind)
+				kind := tenant.Kind
+				if tenant.Acting {
+					kind += ", 대행 중"
+				}
+				fmt.Fprintf(w, "조직:   %s [%s] (%s)\n", tenant.Name, tenant.TenantID, kind)
 			}
 			if brand == nil {
 				fmt.Fprintln(w, "브랜드: 기본 브랜드 없음 ('"+binName+" brands use <이름>'으로 지정)")

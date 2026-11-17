@@ -59,6 +59,34 @@ type Brand struct {
 // File은 config.json에 저장하는 사용자 설정이다.
 type File struct {
 	DefaultBrand map[Env]Brand `json:"default_brand,omitempty"`
+	// DefaultBrandByScope는 scope(cli.Options.Scope)마다 따로 정한 기본 브랜드다.
+	DefaultBrandByScope map[string]map[Env]Brand `json:"default_brand_by_scope,omitempty"`
+}
+
+// DefaultBrandIn은 scope의 기본 브랜드를 돌려준다. scope가 비면 DefaultBrand를 쓴다. scope에 정한 것이
+// 없어도 DefaultBrand로 넘어가지 않는다. scope가 다르면 브랜드도 다른 조직의 것일 수 있어서다.
+func (f File) DefaultBrandIn(scope string, env Env) (Brand, bool) {
+	if scope == "" {
+		b, ok := f.DefaultBrand[env]
+		return b, ok
+	}
+	b, ok := f.DefaultBrandByScope[scope][env]
+	return b, ok
+}
+
+// SetDefaultBrandIn은 scope의 기본 브랜드를 정한다. scope가 비면 DefaultBrand에 쓴다.
+func (f *File) SetDefaultBrandIn(scope string, env Env, b Brand) {
+	if scope == "" {
+		f.DefaultBrand[env] = b
+		return
+	}
+	if f.DefaultBrandByScope == nil {
+		f.DefaultBrandByScope = map[string]map[Env]Brand{}
+	}
+	if f.DefaultBrandByScope[scope] == nil {
+		f.DefaultBrandByScope[scope] = map[Env]Brand{}
+	}
+	f.DefaultBrandByScope[scope][env] = b
 }
 
 func filePath() (string, error) {
