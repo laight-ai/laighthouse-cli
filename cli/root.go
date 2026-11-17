@@ -41,7 +41,8 @@ type Options struct {
 	Stderr io.Writer
 	// Flags는 루트에 전역 플래그를 덧붙인다.
 	Flags func(*pflag.FlagSet)
-	// Header는 로그인 토큰을 싣는 모든 API 요청에 붙일 헤더를 돌려준다. 플래그를 읽은 뒤 명령이 API
+	// Header는 로그인 세션을 거치는 API 요청(생성 클라이언트, api 명령, HTTPClient)에 붙일 헤더를 돌려준다.
+	// 로그인·토큰 갱신·로그아웃 요청에는 붙지 않는다. 플래그를 읽은 뒤 명령이 API
 	// 클라이언트를 만들 때 한 번 부르므로 Flags로 붙인 플래그 값을 쓸 수 있고, 그 클라이언트의 요청에는 같은
 	// 헤더가 실린다. 요청에 같은 이름의 헤더가 이미 있으면(api -H) 그 값을 쓴다.
 	Header func() http.Header
