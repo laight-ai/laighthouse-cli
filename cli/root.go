@@ -116,6 +116,14 @@ func (g *Env) scopeName() string {
 	return g.scope()
 }
 
+// brandSlot은 기본 브랜드를 저장하는 칸을 안내 문구용으로 적는다. 예: "dev 환경", "dev 환경(t9)".
+func (g *Env) brandSlot() string {
+	if s := g.scopeName(); s != "" {
+		return fmt.Sprintf("%s 환경(%s)", g.env, s)
+	}
+	return fmt.Sprintf("%s 환경", g.env)
+}
+
 // resolveEnv는 --env와 --base-url을 읽어 접속 환경과 주소를 정한다.
 func (g *Env) resolveEnv() error {
 	env, err := config.ParseEnv(g.envName)
