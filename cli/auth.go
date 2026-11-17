@@ -30,7 +30,11 @@ func (g *Env) session() (*auth.Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &auth.Session{Env: g.env, Store: store, Client: g.authClient()}, nil
+	s := &auth.Session{Env: g.env, Store: store, Client: g.authClient()}
+	if g.header != nil {
+		s.Header = g.header()
+	}
+	return s, nil
 }
 
 func newLoginCmd(g *Env) *cobra.Command {
