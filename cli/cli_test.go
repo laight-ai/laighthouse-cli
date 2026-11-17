@@ -56,7 +56,8 @@ type fakeBackend struct {
 	noCLIClient    bool // 인증 서비스에 CLI 클라이언트가 아직 등록되지 않은 환경
 	teamsForbidden bool // 팀 목록이 403
 	membersFail    bool // 멤버 목록이 500
-	myPermsDenied  bool // 내 권한 조회가 403
+	noMembership   bool // 소속 조직이 없어 /api/authz/me와 내 권한 조회가 403
+	myPermsHTML    bool // 내 권한 조회가 200인데 JSON이 아닌 본문
 }
 
 type recorded struct {
@@ -172,15 +173,25 @@ func setup(t *testing.T) *fakeBackend {
 		fmt.Fprint(w, `{"upload_id":42,"run_id":9,"status":"processing"}`)
 	})
 	handle("GET /api/authz/me/permissions", func(w http.ResponseWriter, _ *http.Request, _ []byte) {
-		if f.myPermsDenied {
+		if f.noMembership {
 			w.WriteHeader(403)
-			fmt.Fprint(w, `{"detail":"Permission denied","reason":"no_membership"}`)
+			fmt.Fprint(w, `{"detail":"Access denied"}`)
+			return
+		}
+		if f.myPermsHTML {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<html></html>`)
 			return
 		}
 		fmt.Fprint(w, `{"items":[{"scope_type":"tenant","scope_resource_id":null,"permission_keys":["member.read","role.manage"]},
 			{"scope_type":"resource","scope_resource_id":"b1","permission_keys":["report.read"]}]}`)
 	})
 	handle("GET /api/authz/me", func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+		if f.noMembership {
+			w.WriteHeader(403)
+			fmt.Fprint(w, `{"detail":"Access denied"}`)
+			return
+		}
 		fmt.Fprint(w, `{"tenant_id":"t1","name":"라이트","kind":"member","tenant_kind":"customer","acting":false}`)
 	})
 	mux.HandleFunc("POST /auth/oauth/device_authorization", func(w http.ResponseWriter, _ *http.Request) {
@@ -627,13 +638,44 @@ func TestWhoamiPermissionsJSON(t *testing.T) {
 	}
 }
 
-// 권한 조회가 거절되면 계정 정보만 반쯤 찍고 성공으로 끝내지 않는다.
-func TestWhoamiPermissionsForbidden(t *testing.T) {
+// 소속 조직이 없으면 서버가 /api/authz/me와 내 권한 조회를 모두 403으로 거절한다. --permissions를 줘도
+// 계정 정보는 보여 주고, 권한은 조회하지 않고 "없음"으로 표시한다.
+func TestWhoamiPermissionsWithoutMembership(t *testing.T) {
 	f := setup(t)
-	f.myPermsDenied = true
+	f.noMembership = true
 	out, err := run(t, f, "whoami", "--permissions")
-	if err == nil || !strings.Contains(err.Error(), "권한 없음(403)") || !strings.Contains(err.Error(), "no_membership") {
-		t.Fatalf("403 detail/reason을 기대했는데 %v", err)
+	if err != nil {
+		t.Fatalf("소속 조직이 없어도 성공해야 하는데 %v", err)
+	}
+	for _, want := range []string{"계정:   kim@x.com (김)", "조직:   없음", "권한:   없음"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q가 출력에 있어야 하는데:\n%s", want, out)
+		}
+	}
+	if n := len(f.seen("GET", "/api/authz/me/permissions")); n != 0 {
+		t.Errorf("소속 조직이 없으면 권한을 조회하지 않아야 하는데 %d번 불렀습니다", n)
+	}
+
+	out, err = run(t, f, "--json", "whoami", "--permissions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if p, ok := got["permissions"]; !ok || string(p) != "null" {
+		t.Errorf("--permissions를 주면 JSON에 permissions가 null로 있어야 하는데: %s", out)
+	}
+}
+
+// 내 권한 조회가 200인데 JSON이 아니면(프록시 오류 페이지 등) 권한을 빠뜨린 채 성공하지 않고 실패한다.
+func TestWhoamiPermissionsNonJSONBody(t *testing.T) {
+	f := setup(t)
+	f.myPermsHTML = true
+	out, err := run(t, f, "whoami", "--permissions")
+	if err == nil || !strings.Contains(err.Error(), "text/html") {
+		t.Fatalf("Content-Type을 담은 오류를 기대했는데 %v", err)
 	}
 	if out != "" {
 		t.Fatalf("실패하면 아무것도 출력하지 않아야 하는데: %s", out)

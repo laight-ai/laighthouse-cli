@@ -235,7 +235,8 @@ GET /api/authz/me/permissions`,
 				brand = &b
 			}
 			var perms *api.HeldPermissionsOutput
-			if withPermissions {
+			// 소속 조직이 없으면 권한 조회도 403이므로 묻지 않는다.
+			if withPermissions && tenant != nil {
 				c, err := api.New(g.baseURL, s)
 				if err != nil {
 					return err
@@ -247,12 +248,15 @@ GET /api/authz/me/permissions`,
 				if err := CheckStatus(resp.HTTPResponse, resp.Body); err != nil {
 					return err
 				}
+				if resp.JSON200 == nil {
+					return fmt.Errorf("권한 응답을 JSON으로 읽지 못했습니다 (Content-Type: %s)", resp.HTTPResponse.Header.Get("Content-Type"))
+				}
 				perms = resp.JSON200
 			}
 
 			if g.json {
 				v := map[string]any{"env": g.env, "user": user, "tenant": tenant, "default_brand": brand}
-				if perms != nil {
+				if withPermissions {
 					v["permissions"] = perms
 				}
 				return g.out.JSONValue(v)
@@ -274,7 +278,9 @@ GET /api/authz/me/permissions`,
 			} else {
 				fmt.Fprintf(w, "브랜드: %s [%s]\n", brand.Name, brand.ID)
 			}
-			if perms != nil {
+			if withPermissions && perms == nil {
+				fmt.Fprintln(w, "권한:   없음")
+			} else if perms != nil {
 				fmt.Fprintln(w, "\n권한:")
 				return g.out.Table(nil, []string{"범위", "권한 키"}, heldScopeRows(perms.Items))
 			}

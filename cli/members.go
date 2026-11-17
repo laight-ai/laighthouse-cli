@@ -100,6 +100,9 @@ GET /api/authz/members/{uid}/permissions
 			if err := CheckStatus(resp.HTTPResponse, resp.Body); err != nil {
 				return err
 			}
+			if resp.JSON200 == nil {
+				return fmt.Errorf("권한 응답을 JSON으로 읽지 못했습니다 (Content-Type: %s)", resp.HTTPResponse.Header.Get("Content-Type"))
+			}
 			if g.json {
 				return g.out.JSONValue(map[string]any{"member": m, "permissions": resp.JSON200})
 			}
