@@ -91,10 +91,6 @@ func (f *File) SetDefaultBrandIn(scope string, env Env, b Brand) {
 	f.DefaultBrandByScope[scope][env] = b
 }
 
-func filePath() (string, error) {
-	return pathOf("config.json")
-}
-
 func pathOf(name string) (string, error) {
 	dir, err := Dir()
 	if err != nil {
