@@ -139,6 +139,28 @@ func setup(t *testing.T) *fakeBackend {
 			{"id":"r0","name":"Owner","is_external":false,"is_owner":true,"permission_keys":[],"scope_expandable":false},
 			{"id":"r2","name":"대행사","is_external":true,"is_owner":false,"permission_keys":["report.read"],"scope_expandable":false}],"next_after":null}`)
 	})
+	handle("GET /api/authz/permissions", func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+		item := `{"key":%q,"description":"","scope_types":["tenant"],"external_grantable":%t,"risk":"low","ui_bundle":"basic","acting_tier":"never","acting_enabled":false,"acting_grant_only":false}`
+		fmt.Fprintf(w, `{"items":[`+item+`,`+item+`,`+item+`]}`,
+			"report.read", true, "member.invite", false, "report.export", true)
+	})
+	handle("POST /api/authz/roles", func(w http.ResponseWriter, _ *http.Request, body []byte) {
+		var in map[string]any
+		_ = json.Unmarshal(body, &in)
+		keys, _ := json.Marshal(in["permission_keys"])
+		w.WriteHeader(201)
+		fmt.Fprintf(w, `{"id":"r9","name":%q,"is_external":%t,"is_owner":false,"permission_keys":%s,"scope_expandable":%t}`,
+			in["name"], in["is_external"] == true, keys, in["scope_expandable"] == true)
+	})
+	handle("GET /api/authz/roles/{id}", func(w http.ResponseWriter, r *http.Request, _ []byte) {
+		fmt.Fprintf(w, `{"id":%q,"name":"마케터","is_external":false,"is_owner":false,"permission_keys":["report.export","report.read"],"scope_expandable":false}`, r.PathValue("id"))
+	})
+	handle("PATCH /api/authz/roles/{id}", func(w http.ResponseWriter, r *http.Request, _ []byte) {
+		fmt.Fprintf(w, `{"id":%q,"name":"마케팅","is_external":false,"is_owner":false,"permission_keys":["report.read"],"scope_expandable":false}`, r.PathValue("id"))
+	})
+	handle("DELETE /api/authz/roles/{id}", func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+		w.WriteHeader(204)
+	})
 	handle("POST /api/authz/invites", func(w http.ResponseWriter, _ *http.Request, body []byte) {
 		var in map[string]any
 		_ = json.Unmarshal(body, &in)
