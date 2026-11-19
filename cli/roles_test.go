@@ -99,7 +99,8 @@ func TestRolesDryRunSendsNothing(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &plan); err != nil {
 		t.Fatalf("--json이면 JSON 하나여야 하는데: %s", out)
 	}
-	if plan.Method != "POST" || plan.Path != "/api/authz/roles" || len(plan.Body["permission_keys"].([]any)) != 2 {
+	keys, ok := plan.Body["permission_keys"].([]any)
+	if plan.Method != "POST" || plan.Path != "/api/authz/roles" || !ok || len(keys) != 2 {
 		t.Fatalf("보낼 요청이 예상과 다름: %+v", plan)
 	}
 
@@ -153,8 +154,11 @@ func TestRolesUpdatePermissionsReplace(t *testing.T) {
 	if want := map[string]any{"permission_keys": []any{"report.read"}}; !reflect.DeepEqual(body, want) {
 		t.Fatalf("권한 키만 교체해야 하는데 %v", body)
 	}
-	if _, err := run(t, f, "roles", "update", "r1"); err == nil {
-		t.Fatal("바꿀 것이 없으면 실패해야 합니다")
+	if _, err := run(t, f, "roles", "update", "r1"); err == nil || !strings.Contains(err.Error(), "바꿀 것을 정하세요") {
+		t.Fatalf("바꿀 것이 없다는 오류를 기대했는데 %v", err)
+	}
+	if n := len(f.seen("PATCH", "/api/authz/roles/")); n != 1 {
+		t.Fatalf("바꿀 것이 없으면 요청을 보내지 않아야 하는데 PATCH가 %d번", n)
 	}
 }
 
@@ -201,7 +205,25 @@ func TestRolesWriteNeedsExactName(t *testing.T) {
 		}
 	}
 	// 대소문자만 다른 이름은 같은 역할로 본다.
-	if _, err := run(t, f, "roles", "delete", "OWNER", "--dry-run"); err != nil {
-		t.Fatalf("이름 전체(대소문자 무시)는 받아야 하는데 %v", err)
+	out, err := run(t, f, "roles", "delete", "OWNER", "--dry-run")
+	if err != nil || !strings.Contains(out, "DELETE /api/authz/roles/r0") {
+		t.Fatalf("OWNER는 Owner(r0)로 골라야 하는데 %v\n%s", err, out)
+	}
+}
+
+// 줄 키가 하나도 없으면 빈 목록을 보내 권한을 지우지 않고 요청 전에 멈춘다.
+func TestRolesAllPermissionsEmptyStops(t *testing.T) {
+	f := setup(t)
+	f.brandOnlyPerms = true
+	for _, args := range [][]string{
+		{"roles", "update", "대행사", "--all-permissions"},
+		{"roles", "create", "새역할", "--all-permissions"},
+	} {
+		if _, err := run(t, f, args...); err == nil || !strings.Contains(err.Error(), "줄 키가 없습니다") {
+			t.Errorf("%v: 줄 키가 없다는 오류를 기대했는데 %v", args, err)
+		}
+	}
+	if n := len(f.seen("PATCH", "/api/authz/roles/")) + len(f.seen("POST", "/api/authz/roles")); n != 0 {
+		t.Fatalf("요청을 보내지 않아야 하는데 %d번 보냄", n)
 	}
 }

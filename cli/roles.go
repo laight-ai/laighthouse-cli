@@ -88,6 +88,13 @@ func (f *rolePermFlags) resolve(ctx context.Context, c *api.ClientWithResponses,
 		}
 		keys = append(keys, string(p.Key))
 	}
+	// 빈 목록을 보내면 역할의 권한이 모두 지워지거나 권한 없는 역할이 생긴다.
+	if len(keys) == 0 {
+		if external {
+			return nil, errors.New("--all-permissions로 줄 키가 없습니다. 내가 조직 전체에서 가진 키 가운데 외부 역할에 줄 수 있는 것이 없습니다")
+		}
+		return nil, errors.New("--all-permissions로 줄 키가 없습니다. 내가 조직 전체에서 가진 권한 키가 없습니다")
+	}
 	return keys, nil
 }
 
