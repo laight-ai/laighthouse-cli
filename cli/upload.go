@@ -65,7 +65,7 @@ POST /api/resources/{brand}/data-uploads
 				return err
 			}
 			if info.Size() > uploadMaxBytes {
-				return fmt.Errorf("파일이 50MB를 넘습니다 (%d bytes)", info.Size())
+				return fmt.Errorf("파일이 %dMB를 넘습니다 (%d bytes)", uploadMaxBytes>>20, info.Size())
 			}
 			if reportDate != "" {
 				if _, err := time.Parse(time.DateOnly, reportDate); err != nil {

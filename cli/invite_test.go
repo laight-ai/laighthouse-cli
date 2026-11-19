@@ -123,8 +123,9 @@ func TestInviteApproverResolvesEmail(t *testing.T) {
 	}
 
 	sent := len(f.seen("POST", "/api/authz/invites"))
-	if _, err := run(t, f, "invite", "a@y.com", "--role", "마케터", "--approver", "lee@"); err == nil {
-		t.Fatal("일부만 맞는 이메일은 승인자로 받지 않아야 합니다")
+	_, err := run(t, f, "invite", "a@y.com", "--role", "마케터", "--approver", "lee@")
+	if err == nil || !strings.Contains(err.Error(), "UID로 지정") {
+		t.Fatalf("일부만 맞는 이메일은 받지 않고 UID 지정을 안내해야 하는데 %v", err)
 	}
 	if len(f.seen("POST", "/api/authz/invites")) != sent {
 		t.Fatal("승인자를 못 찾으면 요청을 보내지 않아야 합니다")

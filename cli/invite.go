@@ -35,7 +35,7 @@ POST /api/authz/invites
 이미 초대한 주소면 실패합니다. 메일만 다시 보내려면 'invite resend <ID>',
 조건을 바꿔 새로 보내려면 --replace를 붙이세요.
 --expires는 초대받은 사람의 접근이 끝나는 날(그날 23:59:59까지)입니다. 외부 역할이면 꼭 정해야 하고,
-초대 링크도 그날을 넘기지 않게 줄어듭니다.
+초대 링크도 그날을 넘기지 않게 줄어듭니다. 결재 대기면 링크 기간을 승인된 때부터 세므로 그날보다 늦게 끝날 수 있습니다.
 결재 정책이 걸려 있으면 결재 대기가 되고, 승인되면 메일이 나갑니다. 승인자를 직접 골라야 하는
 정책이면 --approver로 정합니다. 빠뜨리면 고를 수 있는 후보를 보여 줍니다.
 
@@ -78,12 +78,10 @@ POST /api/authz/invites
 					return fmt.Errorf("--expires가 이미 지났습니다: %s", expText)
 				}
 				// 접근이 끝난 뒤에 남은 초대는 수락해도 실패하므로, 초대 링크도 그날을 넘기지 않게 줄인다(웹과 같음).
-				if until < ttl {
-					if until < time.Hour {
-						return fmt.Errorf("--expires까지 1시간도 남지 않아 초대 링크를 만들 수 없습니다: %s", expText)
-					}
-					ttl = until
+				if until < time.Hour {
+					return fmt.Errorf("--expires까지 1시간도 남지 않아 초대 링크를 만들 수 없습니다: %s", expText)
 				}
+				ttl = min(ttl, until)
 				expires = &end
 			}
 			ctx := cmd.Context()
@@ -268,6 +266,10 @@ func approverCandidatesError(e *api.ApproverDesignationRequiredErrorResponse) er
 
 // resolveApprovers는 --approver 값을 UID로 바꾼다. @가 있으면 멤버 목록에서 이메일이 정확히 같은 사람을
 // 찾고(승인자를 잘못 고르지 않게 일부 일치는 받지 않는다), 없으면 UID로 본다.
+// 멤버 목록은 호출한 사람의 member.read가 닿는 범위만 담으므로, 승인할 수 있는 사람이라도 없을 수 있다.
+// 그때는 서버가 주는 후보의 UID를 쓰라고 안내한다.
+const approverUIDHint = "--approver 없이 실행하면 서버가 고를 수 있는 후보와 UID를 보여 주니, 그 UID로 지정하세요"
+
 func resolveApprovers(ctx context.Context, c *api.ClientWithResponses, qs []string) ([]string, error) {
 	var members []api.MemberOutput
 	uids := make([]string, 0, len(qs))
@@ -279,7 +281,7 @@ func resolveApprovers(ctx context.Context, c *api.ClientWithResponses, qs []stri
 		if members == nil {
 			var err error
 			if members, _, err = listMembers(ctx, c, CursorFlags{All: true, Limit: 200}); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("승인자 이메일을 찾으려고 멤버 목록을 읽지 못했습니다(%w). %s", err, approverUIDHint)
 			}
 		}
 		uid := ""
@@ -290,7 +292,7 @@ func resolveApprovers(ctx context.Context, c *api.ClientWithResponses, qs []stri
 			}
 		}
 		if uid == "" {
-			return nil, fmt.Errorf("승인자 %s를 멤버에서 찾지 못했습니다. --approver 없이 실행하면 고를 수 있는 후보를 보여 줍니다", q)
+			return nil, fmt.Errorf("승인자 %s가 내가 볼 수 있는 멤버 목록에 없습니다. %s", q, approverUIDHint)
 		}
 		uids = append(uids, uid)
 	}
