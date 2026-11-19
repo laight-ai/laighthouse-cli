@@ -29,8 +29,8 @@ func TestInviteExternalRoleNeedsExpires(t *testing.T) {
 		t.Fatalf("--expires 안내를 기대했는데 %v", err)
 	}
 	yesterday := time.Now().AddDate(0, 0, -1).Format(time.DateOnly)
-	if _, err := run(t, f, "invite", "partner@y.com", "--role", "대행사", "--expires", yesterday); err == nil {
-		t.Fatal("지난 날짜는 실패해야 합니다")
+	if _, err := run(t, f, "invite", "partner@y.com", "--role", "대행사", "--expires", yesterday); err == nil || !strings.Contains(err.Error(), "이미 지났습니다") {
+		t.Fatalf("지난 날짜 오류를 기대했는데 %v", err)
 	}
 	if n := len(f.seen("POST", "/api/authz/invites")); n != 0 {
 		t.Fatalf("요청을 보내지 않아야 하는데 %d번 보냄", n)

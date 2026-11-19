@@ -24,15 +24,12 @@ func TestUploadSizeLimitIs50MB(t *testing.T) {
 	}
 
 	// 예전 20MB 상한 바로 위 크기다. 가짜 서버가 내용이 달라 422로 답하는 것은 상관없다.
-	_, err := run(t, f, "upload", sized("mid.csv", 20<<20+1), "--brand", "b1", "--date", "2026-10-01")
-	if err != nil && strings.Contains(err.Error(), "MB를 넘습니다") {
-		t.Fatalf("20MB를 조금 넘는 파일은 상한에 걸리지 않아야 하는데 %v", err)
-	}
+	_, _ = run(t, f, "upload", sized("mid.csv", 20<<20+1), "--brand", "b1", "--date", "2026-10-01")
 	if n := len(f.seen("POST", "/api/resources/b1/data-uploads")); n != 1 {
 		t.Fatalf("20MB를 조금 넘는 파일은 서버로 보내야 하는데 %d번 보냄", n)
 	}
 
-	_, err = run(t, f, "upload", sized("big.csv", 50<<20+1), "--brand", "b1", "--date", "2026-10-01")
+	_, err := run(t, f, "upload", sized("big.csv", 50<<20+1), "--brand", "b1", "--date", "2026-10-01")
 	if err == nil || !strings.Contains(err.Error(), "50MB") {
 		t.Fatalf("50MB 초과 오류를 기대했는데 %v", err)
 	}

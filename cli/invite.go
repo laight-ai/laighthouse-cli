@@ -195,7 +195,7 @@ type inviteResult struct {
 	Error    string                     `json:"error,omitempty"`
 	// Designation은 결재 정책이 승인자 지정을 요구하는데 --approver가 없을 때 서버가 준 후보다.
 	Designation *api.ApproverDesignationRequiredErrorResponse `json:"approver_designation,omitempty"`
-	// approverProblem은 승인자 때문에 거절됐다는 뜻이다(409 지정 필요, 400 잘못 지정). 나머지 주소를 보내지 않는다.
+	// approverProblem은 승인자 때문에 거절됐다는 뜻이다(409 지정 필요, 400 잘못 지정).
 	approverProblem bool
 }
 
@@ -264,12 +264,14 @@ func approverCandidatesError(e *api.ApproverDesignationRequiredErrorResponse) er
 	return errors.New(b.String())
 }
 
+// approverUIDHint는 이메일로 승인자를 찾지 못했을 때 붙이는 안내다. 후보는 정책이 승인자 지정을 요구할 때만
+// 나오고, 그렇지 않으면 --approver 없이 실행한 초대가 그대로 나가므로 그 조건을 함께 적는다.
+const approverUIDHint = "--approver에 UID를 쓰세요. 승인자 지정을 요구하는 정책이면 --approver 없이 실행했을 때 초대는 나가지 않고 고를 수 있는 후보와 UID가 나옵니다"
+
 // resolveApprovers는 --approver 값을 UID로 바꾼다. @가 있으면 멤버 목록에서 이메일이 정확히 같은 사람을
 // 찾고(승인자를 잘못 고르지 않게 일부 일치는 받지 않는다), 없으면 UID로 본다.
 // 멤버 목록은 호출한 사람의 member.read가 닿는 범위만 담으므로, 승인할 수 있는 사람이라도 없을 수 있다.
 // 그때는 서버가 주는 후보의 UID를 쓰라고 안내한다.
-const approverUIDHint = "--approver 없이 실행하면 서버가 고를 수 있는 후보와 UID를 보여 주니, 그 UID로 지정하세요"
-
 func resolveApprovers(ctx context.Context, c *api.ClientWithResponses, qs []string) ([]string, error) {
 	var members []api.MemberOutput
 	uids := make([]string, 0, len(qs))
