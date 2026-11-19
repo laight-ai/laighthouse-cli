@@ -30,7 +30,7 @@ func newInviteCmd(g *Env) *cobra.Command {
 받은 사람이 메일의 링크로 수락하면 역할이 부여됩니다. 이메일을 여러 개 적으면 한 명씩 보냅니다.
 POST /api/authz/invites
 
---role에는 역할 이름이나 ID를 씁니다('` + binName + ` roles'로 확인).
+--role에는 역할 이름 전체나 ID를 씁니다('` + binName + ` roles'로 확인).
 --brand를 주면 그 브랜드로 범위가 제한되고, 없으면 조직 전체 범위입니다.
 이미 초대한 주소면 실패합니다. 메일만 다시 보내려면 'invite resend <ID>',
 조건을 바꿔 새로 보내려면 --replace를 붙이세요.
@@ -89,13 +89,7 @@ POST /api/authz/invites
 			if err != nil {
 				return err
 			}
-			roles, _, err := listRoles(ctx, c, CursorFlags{All: true, Limit: 200})
-			if err != nil {
-				return err
-			}
-			role, err := Pick("역할", roleQ, roles,
-				func(r api.RoleOutput) string { return r.Id },
-				func(r api.RoleOutput) string { return r.Name })
+			role, err := findRole(ctx, c, roleQ)
 			if err != nil {
 				return err
 			}

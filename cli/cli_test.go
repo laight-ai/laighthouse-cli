@@ -141,8 +141,10 @@ func setup(t *testing.T) *fakeBackend {
 	})
 	handle("GET /api/authz/permissions", func(w http.ResponseWriter, _ *http.Request, _ []byte) {
 		item := `{"key":%q,"description":"","scope_types":["tenant"],"external_grantable":%t,"risk":"low","ui_bundle":"basic","acting_tier":"never","acting_enabled":false,"acting_grant_only":false}`
-		fmt.Fprintf(w, `{"items":[`+item+`,`+item+`,`+item+`]}`,
-			"report.read", true, "member.invite", false, "report.export", true)
+		// 내 권한(GET /api/authz/me/permissions)과 맞춰 둔다: member.read·role.manage는 조직 전체에서,
+		// report.read는 브랜드 b1에서만 가졌고, member.invite는 갖지 않았다.
+		fmt.Fprintf(w, `{"items":[`+item+`,`+item+`,`+item+`,`+item+`]}`,
+			"report.read", true, "member.read", true, "member.invite", false, "role.manage", false)
 	})
 	handle("POST /api/authz/roles", func(w http.ResponseWriter, _ *http.Request, body []byte) {
 		var in map[string]any
@@ -151,9 +153,6 @@ func setup(t *testing.T) *fakeBackend {
 		w.WriteHeader(201)
 		fmt.Fprintf(w, `{"id":"r9","name":%q,"is_external":%t,"is_owner":false,"permission_keys":%s,"scope_expandable":%t}`,
 			in["name"], in["is_external"] == true, keys, in["scope_expandable"] == true)
-	})
-	handle("GET /api/authz/roles/{id}", func(w http.ResponseWriter, r *http.Request, _ []byte) {
-		fmt.Fprintf(w, `{"id":%q,"name":"마케터","is_external":false,"is_owner":false,"permission_keys":["report.export","report.read"],"scope_expandable":false}`, r.PathValue("id"))
 	})
 	handle("PATCH /api/authz/roles/{id}", func(w http.ResponseWriter, r *http.Request, _ []byte) {
 		fmt.Fprintf(w, `{"id":%q,"name":"마케팅","is_external":false,"is_owner":false,"permission_keys":["report.read"],"scope_expandable":false}`, r.PathValue("id"))

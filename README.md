@@ -34,7 +34,7 @@ laighthouse-cli upload history
 - 자주 쓰는 동작은 최상위 동사: `login`, `logout`, `whoami`, `upload`, `invite`
 - 동작에 딸린 이력·관리는 그 동사 아래: `upload history`, `invite list`
 - 나머지는 명사이고 명사만 쳐도 목록: `brands`, `members`, `teams`, `roles`, `reports`. 단수형(`member`)과 `list`도 받습니다.
-- 브랜드·역할·멤버는 ID 대신 이름이나 이메일(일부만 적어도 됨)로 지정할 수 있습니다.
+- 브랜드·멤버는 ID 대신 이름이나 이메일(일부만 적어도 됨)로, 역할은 이름 전체로 지정할 수 있습니다.
 
 전용 명령이 없는 엔드포인트는 `laighthouse-cli api`로 부릅니다.
 

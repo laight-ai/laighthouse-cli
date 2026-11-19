@@ -20,26 +20,27 @@ func postedRole(t *testing.T, f *fakeBackend, i int) map[string]any {
 	return body
 }
 
-// --all은 서버 권한 목록의 키를 모두 주고, 외부 역할이면 외부에 줄 수 있는 키만 준다.
+// --all-permissions는 서버 권한 목록 가운데 내가 조직 전체에서 가진 키만 주고(서버가 그 밖의 키는 거절한다),
+// 외부 역할이면 그중 외부에 줄 수 있는 키만 준다.
 func TestRolesCreateAllFollowsRegistry(t *testing.T) {
 	f := setup(t)
-	if _, err := run(t, f, "roles", "create", "관리자", "--all"); err != nil {
+	if _, err := run(t, f, "roles", "create", "관리자", "--all-permissions"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := run(t, f, "roles", "create", "대행사", "--all", "--external", "--scope-expandable"); err != nil {
+	if _, err := run(t, f, "roles", "create", "대행사", "--all-permissions", "--external", "--scope-expandable"); err != nil {
 		t.Fatal(err)
 	}
 
 	internal := postedRole(t, f, 0)
-	if want := []any{"report.read", "member.invite", "report.export"}; !reflect.DeepEqual(internal["permission_keys"], want) {
-		t.Fatalf("내부 역할은 권한 목록 전부여야 하는데 %v", internal["permission_keys"])
+	if want := []any{"member.read", "role.manage"}; !reflect.DeepEqual(internal["permission_keys"], want) {
+		t.Fatalf("브랜드에서만 가진 키와 갖지 않은 키는 빠져야 하는데 %v", internal["permission_keys"])
 	}
 	if internal["name"] != "관리자" || internal["is_external"] != false || internal["scope_expandable"] != false {
 		t.Fatalf("내부 역할 본문이 예상과 다름: %v", internal)
 	}
 
 	external := postedRole(t, f, 1)
-	if want := []any{"report.read", "report.export"}; !reflect.DeepEqual(external["permission_keys"], want) {
+	if want := []any{"member.read"}; !reflect.DeepEqual(external["permission_keys"], want) {
 		t.Fatalf("외부 역할은 external_grantable 키만이어야 하는데 %v", external["permission_keys"])
 	}
 	if external["is_external"] != true || external["scope_expandable"] != true {
@@ -69,9 +70,9 @@ func TestRolesCreatePermissionFlag(t *testing.T) {
 func TestRolesCreateRejectsBeforeRequest(t *testing.T) {
 	f := setup(t)
 	cases := map[string][]string{
-		"권한 없음":               {"roles", "create", "빈역할"},
-		"내부 역할에 범위 확장":        {"roles", "create", "x", "-p", "report.read", "--scope-expandable"},
-		"--all과 --permission": {"roles", "create", "x", "--all", "-p", "report.read"},
+		"권한 없음":                           {"roles", "create", "빈역할"},
+		"내부 역할에 범위 확장":                    {"roles", "create", "x", "-p", "report.read", "--scope-expandable"},
+		"--all-permissions와 --permission": {"roles", "create", "x", "--all-permissions", "-p", "report.read"},
 	}
 	for name, args := range cases {
 		if _, err := run(t, f, args...); err == nil {
@@ -87,7 +88,7 @@ func TestRolesCreateRejectsBeforeRequest(t *testing.T) {
 func TestRolesDryRunSendsNothing(t *testing.T) {
 	f := setup(t)
 
-	out, err := run(t, f, "--json", "roles", "create", "관리자", "--all", "--dry-run")
+	out, err := run(t, f, "--json", "roles", "create", "관리자", "--all-permissions", "--dry-run")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +99,7 @@ func TestRolesDryRunSendsNothing(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &plan); err != nil {
 		t.Fatalf("--json이면 JSON 하나여야 하는데: %s", out)
 	}
-	if plan.Method != "POST" || plan.Path != "/api/authz/roles" || len(plan.Body["permission_keys"].([]any)) != 3 {
+	if plan.Method != "POST" || plan.Path != "/api/authz/roles" || len(plan.Body["permission_keys"].([]any)) != 2 {
 		t.Fatalf("보낼 요청이 예상과 다름: %+v", plan)
 	}
 
@@ -177,10 +178,30 @@ func TestRolesShowListsKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(f.seen("GET", "/api/authz/roles/r1")) != 1 {
-		t.Fatal("이름으로 고른 r1을 조회해야 합니다")
+	if !strings.Contains(out, "ID:        r1") || !strings.Contains(out, "권한 키 (1개)") || !strings.Contains(out, "  report.read\n") {
+		t.Fatalf("마케터(r1)의 권한 키를 한 줄씩 보여 줘야 하는데: %s", out)
 	}
-	if !strings.Contains(out, "권한 키 (2개)") || !strings.Contains(out, "  report.export\n") {
-		t.Fatalf("권한 키를 한 줄씩 보여 줘야 하는데: %s", out)
+}
+
+// 역할을 바꾸고 지우는 명령은 이름 일부만 맞는 역할을 고르지 않는다.
+func TestRolesWriteNeedsExactName(t *testing.T) {
+	f := setup(t)
+	for _, args := range [][]string{
+		{"roles", "delete", "마케"},
+		{"roles", "update", "마케", "--name", "x"},
+		{"invite", "kim@x.com", "--role", "마케"},
+	} {
+		if _, err := run(t, f, args...); err == nil || !strings.Contains(err.Error(), "이름 전체") {
+			t.Errorf("%v: 이름 전체를 적으라는 오류를 기대했는데 %v", args, err)
+		}
+	}
+	for _, m := range []string{"PATCH", "DELETE", "POST"} {
+		if n := len(f.seen(m, "/api/authz/")); n != 0 {
+			t.Fatalf("%s 요청을 보내지 않아야 하는데 %d번 보냄", m, n)
+		}
+	}
+	// 대소문자만 다른 이름은 같은 역할로 본다.
+	if _, err := run(t, f, "roles", "delete", "OWNER", "--dry-run"); err != nil {
+		t.Fatalf("이름 전체(대소문자 무시)는 받아야 하는데 %v", err)
 	}
 }

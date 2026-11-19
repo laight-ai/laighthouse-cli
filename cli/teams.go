@@ -63,7 +63,7 @@ func newRolesCmd(g *Env) *cobra.Command {
 		"조직의 역할과 권한 키",
 		`역할과 그 역할이 가진 권한 키를 봅니다. "Owner"는 모든 권한을 가진 기본 역할입니다.
 GET /api/authz/roles
-'`+binName+` invite --role'에는 여기 나온 이름이나 ID를 씁니다.
+'`+binName+` invite --role'에는 여기 나온 이름 전체나 ID를 씁니다.
 역할은 'roles create'로 만들고 'roles update'·'roles delete'로 바꾸거나 지웁니다.`,
 		newRolesShowCmd(g), newRolesCreateCmd(g), newRolesUpdateCmd(g), newRolesDeleteCmd(g))
 }
