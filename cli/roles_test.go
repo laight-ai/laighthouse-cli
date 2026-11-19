@@ -99,8 +99,8 @@ func TestRolesDryRunSendsNothing(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &plan); err != nil {
 		t.Fatalf("--json이면 JSON 하나여야 하는데: %s", out)
 	}
-	keys, ok := plan.Body["permission_keys"].([]any)
-	if plan.Method != "POST" || plan.Path != "/api/authz/roles" || !ok || len(keys) != 2 {
+	if plan.Method != "POST" || plan.Path != "/api/authz/roles" ||
+		!reflect.DeepEqual(plan.Body["permission_keys"], []any{"member.read", "role.manage"}) {
 		t.Fatalf("보낼 요청이 예상과 다름: %+v", plan)
 	}
 

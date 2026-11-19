@@ -170,7 +170,7 @@ POST /api/authz/invites
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&roleQ, "role", "", "부여할 역할 이름 또는 ID (필수)")
+	cmd.Flags().StringVar(&roleQ, "role", "", "부여할 역할 이름 전체 또는 ID (필수)")
 	cmd.Flags().StringArrayVarP(&brands, "brand", "b", nil, "범위를 제한할 브랜드 이름 또는 ID (여러 번 지정 가능)")
 	cmd.Flags().StringVar(&ttlText, "ttl", "7d", "초대 링크 유효 기간 (예: 12h, 7d. 1h ~ 30d)")
 	cmd.Flags().BoolVar(&replace, "replace", false, "이미 초대한 주소면 기존 초대를 이번 조건으로 바꿔 다시 보냄")

@@ -120,7 +120,11 @@ func findRole(ctx context.Context, c *api.ClientWithResponses, q string) (api.Ro
 		}
 	}
 	if len(exact) == 0 {
-		return api.RoleOutput{}, fmt.Errorf("이름이나 ID가 %q인 역할이 없습니다. 이름 전체를 적으세요('"+binName+" roles'로 확인)", q)
+		names := make([]string, 0, len(roles))
+		for _, r := range roles {
+			names = append(names, r.Name)
+		}
+		return api.RoleOutput{}, fmt.Errorf("이름이나 ID가 %q인 역할이 없습니다. 이름 전체를 적으세요. 있는 역할: %s", q, strings.Join(names, ", "))
 	}
 	// 하나면 그것을, 이름이 같은 역할이 여럿이면 ID로 지정하라는 오류를 Pick이 돌려준다.
 	return Pick("역할", q, exact,
