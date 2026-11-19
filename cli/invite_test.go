@@ -124,7 +124,7 @@ func TestInviteApproverResolvesEmail(t *testing.T) {
 
 	sent := len(f.seen("POST", "/api/authz/invites"))
 	_, err := run(t, f, "invite", "a@y.com", "--role", "마케터", "--approver", "lee@")
-	if err == nil || !strings.Contains(err.Error(), "UID로 지정") {
+	if err == nil || !strings.Contains(err.Error(), "UID를 쓰세요") {
 		t.Fatalf("일부만 맞는 이메일은 받지 않고 UID 지정을 안내해야 하는데 %v", err)
 	}
 	if len(f.seen("POST", "/api/authz/invites")) != sent {
