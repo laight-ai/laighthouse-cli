@@ -23,6 +23,7 @@ laighthouse-cli brands access              # 기본 브랜드에 접근할 수 �
 laighthouse-cli members --all
 laighthouse-cli members show kim@example.com
 laighthouse-cli invite kim@example.com --role 마케터
+laighthouse-cli roles create 마케터 -p report.read,report.export --dry-run
 laighthouse-cli reports --type daily,mtd
 laighthouse-cli reports show <ID> --web    # 차트는 웹에서
 laighthouse-cli upload ./sales.xlsx --wait
@@ -33,7 +34,7 @@ laighthouse-cli upload history
 - 자주 쓰는 동작은 최상위 동사: `login`, `logout`, `whoami`, `upload`, `invite`
 - 동작에 딸린 이력·관리는 그 동사 아래: `upload history`, `invite list`
 - 나머지는 명사이고 명사만 쳐도 목록: `brands`, `members`, `teams`, `roles`, `reports`. 단수형(`member`)과 `list`도 받습니다.
-- 브랜드·역할·멤버는 ID 대신 이름이나 이메일(일부만 적어도 됨)로 지정할 수 있습니다.
+- 브랜드·멤버는 ID 대신 이름이나 이메일(일부만 적어도 됨)로, 역할은 이름 전체로 지정할 수 있습니다.
 
 전용 명령이 없는 엔드포인트는 `laighthouse-cli api`로 부릅니다.
 
@@ -48,6 +49,7 @@ laighthouse-cli api POST /api/authz/teams --data '{"name":"그로스팀"}'
 - 각 명령의 `--help`에 기능, 대응하는 API, 필요한 권한이 적혀 있습니다.
 - 로그인은 `echo "$PASSWORD" | laighthouse-cli login --username me@laight.ai --password-stdin`.
 - 잘못된 하위 명령이나 인자는 비슷한 명령을 제안하고 종료 코드 1로 끝납니다.
+- 쓰기 명령은 묻지 않고 바로 실행합니다. `roles create`·`update`·`delete`는 `--dry-run`으로 보낼 요청을 먼저 볼 수 있습니다.
 - 환경변수: `LAIGHTHOUSE_ENV`(dev|prod), `LAIGHTHOUSE_BRAND`(기본 브랜드), `LAIGHTHOUSE_CONFIG_DIR`.
 
 ## 토큰

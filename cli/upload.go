@@ -18,8 +18,8 @@ import (
 	"github.com/laight-ai/laighthouse-cli/internal/api"
 )
 
-// 웹 업로드 화면과 같은 제한.
-const uploadMaxBytes = 20 << 20
+// 웹 업로드 화면, 서버(MAX_UPLOAD_SIZE_BYTES)와 같은 제한.
+const uploadMaxBytes = 50 << 20
 
 func newUploadCmd(g *Env) *cobra.Command {
 	var (
@@ -31,7 +31,7 @@ func newUploadCmd(g *Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upload <파일>",
 		Short: "엑셀/CSV 데이터 업로드, 업로드 이력과 상태",
-		Long: `매체에서 내려받은 엑셀(.xlsx)이나 CSV 파일(20MB 이하)을 브랜드에 올립니다. 웹의 "데이터 업로드"와 같습니다.
+		Long: `매체에서 내려받은 엑셀(.xlsx)이나 CSV 파일(50MB 이하)을 브랜드에 올립니다. 웹의 "데이터 업로드"와 같습니다.
 POST /api/resources/{brand}/data-uploads
 
 파일은 브랜드의 "엑셀 연결"(어떤 매체의 파일인지)에 붙습니다. 연결이 하나뿐이면 자동으로 고르고,
@@ -65,7 +65,7 @@ POST /api/resources/{brand}/data-uploads
 				return err
 			}
 			if info.Size() > uploadMaxBytes {
-				return fmt.Errorf("파일이 20MB를 넘습니다 (%d bytes)", info.Size())
+				return fmt.Errorf("파일이 %dMB를 넘습니다 (%d bytes)", uploadMaxBytes>>20, info.Size())
 			}
 			if reportDate != "" {
 				if _, err := time.Parse(time.DateOnly, reportDate); err != nil {
