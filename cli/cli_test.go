@@ -60,6 +60,7 @@ type fakeBackend struct {
 	myPermsHTML     bool // 내 권한 조회가 200인데 JSON이 아닌 본문
 	memberPermsHTML bool // 멤버 권한 조회가 200인데 JSON이 아닌 본문
 	needApprover    bool // 결재 정책이 승인자 지정을 요구해 approval 없는 초대가 409
+	badApprover     bool // approval이 있는 초대가 400 approver_designation
 	acting          bool // /api/authz/me가 대행 중인 조직을 돌려줌
 }
 
@@ -141,6 +142,11 @@ func setup(t *testing.T) *fakeBackend {
 	handle("POST /api/authz/invites", func(w http.ResponseWriter, _ *http.Request, body []byte) {
 		var in map[string]any
 		_ = json.Unmarshal(body, &in)
+		if f.badApprover && in["approval"] != nil {
+			w.WriteHeader(400)
+			fmt.Fprint(w, `{"detail":"Every designated approver must be able to approve this request","reason":"approver_designation"}`)
+			return
+		}
 		if f.needApprover && in["approval"] == nil {
 			w.WriteHeader(409)
 			fmt.Fprint(w, `{"detail":"approvers must be designated","reason":"approver_designation_required","required_approvals":1,"min_designated":1,

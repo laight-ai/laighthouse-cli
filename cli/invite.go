@@ -72,7 +72,7 @@ POST /api/authz/invites
 				if err != nil {
 					return fmt.Errorf("--expires는 YYYY-MM-DD 형식이어야 합니다: %q", expText)
 				}
-				end := day.Add(24*time.Hour - time.Second)
+				end := day.AddDate(0, 0, 1).Add(-time.Second)
 				until := time.Until(end)
 				if until <= 0 {
 					return fmt.Errorf("--expires가 이미 지났습니다: %s", expText)
@@ -131,17 +131,15 @@ POST /api/authz/invites
 			}
 
 			var results []inviteResult
-			var designation *api.ApproverDesignationRequiredErrorResponse
-			failed := 0
-			for _, email := range args {
+			for i, email := range args {
 				r := sendInvite(ctx, c, base, email, replace)
-				if r.Error != "" {
-					failed++
-				}
 				results = append(results, r)
-				// 승인자 지정은 조직의 결재 정책이라 나머지 주소도 같은 이유로 거절된다. 더 보내지 않는다.
-				if r.Designation != nil {
-					designation = r.Designation
+				// 승인자 문제는 결재 정책과 --approver에서 오므로 나머지 주소도 같은 이유로 거절된다.
+				// 더 보내지 않고, 보내지 않은 주소도 결과에 남긴다.
+				if r.approverProblem {
+					for _, rest := range args[i+1:] {
+						results = append(results, inviteResult{Email: rest, Status: "skipped"})
+					}
 					break
 				}
 			}
@@ -158,16 +156,24 @@ POST /api/authz/invites
 							r.Email, r.Invite.Id, r.Invite.ExpiresAt.Local().Format(time.DateTime), role.Name)
 					case "pending_approval":
 						fmt.Fprintf(w, "%s: 결재 대기 중입니다. 승인되면 메일이 나갑니다 (결재 요청 %s)\n", r.Email, r.Approval.ApprovalRequestId)
+					case "skipped":
+						fmt.Fprintf(w, "%s: 보내지 않음 - 앞 주소와 같은 승인자 문제로 거절되므로 멈췄습니다\n", r.Email)
 					default:
 						fmt.Fprintf(w, "%s: 실패 - %s\n", r.Email, r.Error)
 					}
 				}
 			}
-			if designation != nil {
-				return approverCandidatesError(designation, len(args)-len(results))
+			notSent := 0
+			for _, r := range results {
+				if r.Designation != nil {
+					return approverCandidatesError(r.Designation)
+				}
+				if r.Status == "failed" || r.Status == "skipped" {
+					notSent++
+				}
 			}
-			if failed > 0 {
-				return fmt.Errorf("%d건 중 %d건을 보내지 못했습니다", len(results), failed)
+			if notSent > 0 {
+				return fmt.Errorf("%d건 중 %d건을 보내지 못했습니다", len(results), notSent)
 			}
 			return nil
 		},
@@ -185,12 +191,14 @@ POST /api/authz/invites
 // inviteResult는 이메일 하나에 초대를 보낸 결과다. --json 출력에도 그대로 쓴다.
 type inviteResult struct {
 	Email    string                     `json:"email"`
-	Status   string                     `json:"status"` // sent | pending_approval | failed
+	Status   string                     `json:"status"` // sent | pending_approval | failed | skipped
 	Invite   *api.PostInviteOutput      `json:"invite,omitempty"`
 	Approval *api.ApprovalPendingOutput `json:"approval,omitempty"`
 	Error    string                     `json:"error,omitempty"`
 	// Designation은 결재 정책이 승인자 지정을 요구하는데 --approver가 없을 때 서버가 준 후보다.
 	Designation *api.ApproverDesignationRequiredErrorResponse `json:"approver_designation,omitempty"`
+	// approverProblem은 승인자 때문에 거절됐다는 뜻이다(409 지정 필요, 400 잘못 지정). 나머지 주소를 보내지 않는다.
+	approverProblem bool
 }
 
 func sendInvite(ctx context.Context, c *api.ClientWithResponses, base api.PostInviteInput, email string, replace bool) inviteResult {
@@ -222,10 +230,15 @@ func sendInvite(ctx context.Context, c *api.ClientWithResponses, base api.PostIn
 			return r
 		}
 		if d := approverDesignation(resp.HTTPResponse, resp.Body); d != nil {
-			r.Error, r.Designation = "결재 승인자를 정해야 합니다", d
+			r.Error, r.Designation, r.approverProblem = "결재 승인자를 정해야 합니다", d, true
 			return r
 		}
 		r.Error = CheckStatus(resp.HTTPResponse, resp.Body).Error()
+		// 400 approver_designation: 고른 승인자가 승인할 수 없거나, 정책이 승인자 지정을 받지 않는다.
+		var bad api.ApproverDesignationErrorResponse
+		if resp.StatusCode() == http.StatusBadRequest && json.Unmarshal(resp.Body, &bad) == nil && bad.Reason == api.ApproverDesignation {
+			r.approverProblem = true
+		}
 		return r
 	}
 }
@@ -244,14 +257,11 @@ func approverDesignation(resp *http.Response, body []byte) *api.ApproverDesignat
 }
 
 // approverCandidatesError는 서버가 준 후보와 최소 인원으로 --approver를 안내하는 오류를 만든다.
-func approverCandidatesError(e *api.ApproverDesignationRequiredErrorResponse, unsent int) error {
+func approverCandidatesError(e *api.ApproverDesignationRequiredErrorResponse) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "결재 승인자를 정해야 합니다. --approver로 다음 중 %d명 이상을 골라 다시 실행하세요(필요한 승인 %d명):", e.MinDesignated, e.RequiredApprovals)
 	for _, c := range e.Candidates {
 		fmt.Fprintf(&b, "\n  %s %s [%s]", Deref(c.Email), Deref(c.Name), c.Uid)
-	}
-	if unsent > 0 {
-		fmt.Fprintf(&b, "\n나머지 %d건은 보내지 않았습니다", unsent)
 	}
 	return errors.New(b.String())
 }
