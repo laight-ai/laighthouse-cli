@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ POST /api/authz/invites
 
 --role에는 역할 이름 전체나 ID를 씁니다('` + binName + ` roles'로 확인).
 --brand를 주면 그 브랜드나 노드('brands tree'의 그룹 등)로 범위가 제한되고, 없으면 조직 전체 범위입니다.
+--brand에는 이름 전체나 ID를 씁니다. 보관된 노드에는 초대할 수 없습니다.
 이미 초대한 주소면 실패합니다. 메일만 다시 보내려면 'invite resend <ID>',
 조건을 바꿔 새로 보내려면 --replace를 붙이세요.
 --expires는 초대받은 사람의 접근이 끝나는 날(그날 23:59:59까지)입니다. 외부 역할이면 꼭 정해야 하고,
@@ -118,13 +120,19 @@ POST /api/authz/invites
 				if err := CheckStatus(resp.HTTPResponse, resp.Body); err != nil {
 					return err
 				}
+				if resp.JSON200 == nil {
+					return fmt.Errorf("리소스 트리 응답을 읽지 못했습니다 (HTTP %d)", resp.StatusCode())
+				}
 				ids := make([]string, 0, len(brands))
 				for _, q := range brands {
-					id, err := pickNode(resp.JSON200.Items, q)
+					id, err := pickScopeNode(resp.JSON200.Items, q)
 					if err != nil {
 						return err
 					}
-					ids = append(ids, id)
+					// 서버는 같은 노드가 두 번 들어간 범위를 거절한다.
+					if !slices.Contains(ids, id) {
+						ids = append(ids, id)
+					}
 				}
 				base.ScopeType = api.BindingScopeTypeResource
 				base.ScopeResourceIds = &ids
@@ -179,13 +187,41 @@ POST /api/authz/invites
 		},
 	}
 	cmd.Flags().StringVar(&roleQ, "role", "", "부여할 역할 이름 전체 또는 ID (필수)")
-	cmd.Flags().StringArrayVarP(&brands, "brand", "b", nil, "범위를 제한할 브랜드나 트리 노드의 이름 또는 ID (여러 번 지정 가능)")
+	cmd.Flags().StringArrayVarP(&brands, "brand", "b", nil, "범위를 제한할 브랜드나 트리 노드의 이름 전체 또는 ID (여러 번 지정 가능)")
 	cmd.Flags().StringVar(&ttlText, "ttl", "14d", "초대 링크 유효 기간 (예: 12h, 7d. 1h ~ 30d)")
 	cmd.Flags().BoolVar(&replace, "replace", false, "이미 초대한 주소면 기존 초대를 이번 조건으로 바꿔 다시 보냄")
 	cmd.Flags().StringVar(&expText, "expires", "", "접근 만료일 YYYY-MM-DD (그날 23:59:59까지. 외부 역할이면 필수)")
 	cmd.Flags().StringArrayVar(&approvers, "approver", nil, "결재 승인자 이메일 또는 UID (여러 번 지정 가능. 정책이 승인자 지정을 요구할 때)")
 	cmd.AddCommand(newInviteListCmd(g), newInviteResendCmd(g), newInviteRevokeCmd(g))
 	return cmd
+}
+
+// pickScopeNode는 초대 범위로 줄 트리 노드를 ID나 이름 전체(대소문자 무시)로 고른다. 권한을 주는 범위라
+// pickNode와 달리 이름 일부만 맞는 노드는 고르지 않는다. 보관된 노드는 웹처럼 ID로 적어도 받지 않는다.
+func pickScopeNode(tree []api.ResourceOutput, q string) (string, error) {
+	var exact []api.ResourceOutput
+	for _, r := range tree {
+		if r.Id == q {
+			if r.Status == api.ResourceStatusArchived {
+				return "", fmt.Errorf("%s(%s)는 보관된 노드라 초대 범위로 줄 수 없습니다", r.Name, r.Id)
+			}
+			return r.Id, nil
+		}
+		if r.Status != api.ResourceStatusArchived && strings.EqualFold(r.Name, q) {
+			exact = append(exact, r)
+		}
+	}
+	switch len(exact) {
+	case 1:
+		return exact[0].Id, nil
+	case 0:
+		return "", fmt.Errorf("이름이나 ID가 %q인 노드가 없습니다. 이름 전체를 적으세요('%s brands tree'로 확인)", q, binName)
+	}
+	names := make([]string, 0, len(exact))
+	for _, r := range exact {
+		names = append(names, fmt.Sprintf("%s(%s)", r.Name, r.Id))
+	}
+	return "", fmt.Errorf("이름이 %q인 노드가 여러 개입니다. ID로 지정하세요: %s", q, strings.Join(names, ", "))
 }
 
 // inviteResult는 이메일 하나에 초대를 보낸 결과다. --json 출력에도 그대로 쓴다.

@@ -192,10 +192,14 @@ func pickConnection(conns []api.MediaConnectionResponse, q string) (api.MediaCon
 	if len(exact) == 0 {
 		return api.MediaConnectionResponse{}, fmt.Errorf("매체 이름이나 ID가 %q인 엑셀 연결이 없습니다. 매체 이름 전체를 적으세요. 있는 연결: %s", q, strings.Join(names, ", "))
 	}
-	// 하나면 그것을, 같은 매체의 연결이 여럿이면 ID로 지정하라는 오류를 Pick이 돌려준다.
-	return Pick("엑셀 연결", q, exact,
-		func(mc api.MediaConnectionResponse) string { return strconv.Itoa(mc.Id) },
-		func(mc api.MediaConnectionResponse) string { return mc.Media })
+	if len(exact) > 1 {
+		dup := make([]string, 0, len(exact))
+		for _, mc := range exact {
+			dup = append(dup, fmt.Sprintf("%s(%d)", mc.Media, mc.Id))
+		}
+		return api.MediaConnectionResponse{}, fmt.Errorf("매체가 %q인 엑셀 연결이 여러 개입니다. ID로 지정하세요: %s", q, strings.Join(dup, ", "))
+	}
+	return exact[0], nil
 }
 
 // multipartUpload는 웹과 같은 필드(connection_id, report_date, file)로 multipart 본문을 만든다.

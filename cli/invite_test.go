@@ -154,3 +154,27 @@ func TestInviteBrandAcceptsTreeNode(t *testing.T) {
 		t.Fatalf("범위가 g1, b1이어야 하는데 %v %v", body["scope_type"], body["scope_resource_ids"])
 	}
 }
+
+// 권한을 주는 범위라 이름 일부만 맞는 노드, 보관된 노드는 고르지 않는다. 같은 노드를 두 번 적으면 한 번만 보낸다.
+func TestInviteBrandPicksExactActiveNode(t *testing.T) {
+	f := setup(t)
+	for _, tc := range []struct{ q, want string }{
+		{"그룹", "이름 전체"},     // 그룹1의 일부
+		{"g9", "보관"},        // 보관된 그룹1
+		{"기타", "ID로 지정하세요"}, // 같은 이름의 노드 e1, e2
+	} {
+		_, err := run(t, f, "invite", "kim@y.com", "--role", "마케터", "--brand", tc.q)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("--brand %s: %q가 든 오류를 기대했는데 %v", tc.q, tc.want, err)
+		}
+	}
+	if n := len(f.seen("POST", "/api/authz/invites")); n != 0 {
+		t.Fatalf("초대를 보내지 않아야 하는데 %d번 보냄", n)
+	}
+	if _, err := run(t, f, "invite", "kim@y.com", "--role", "마케터", "--brand", "그룹1", "--brand", "g1"); err != nil {
+		t.Fatal(err)
+	}
+	if ids := lastInviteBody(t, f)["scope_resource_ids"]; !reflect.DeepEqual(ids, []any{"g1"}) {
+		t.Fatalf("범위가 g1 하나여야 하는데 %v", ids)
+	}
+}

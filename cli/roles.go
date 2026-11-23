@@ -65,6 +65,9 @@ func listRoles(ctx context.Context, c *api.ClientWithResponses, cf CursorFlags) 
 		if err := CheckStatus(resp.HTTPResponse, resp.Body); err != nil {
 			return nil, nil, err
 		}
+		if resp.JSON200 == nil {
+			return nil, nil, fmt.Errorf("역할 목록 응답을 읽지 못했습니다 (HTTP %d)", resp.StatusCode())
+		}
 		return resp.JSON200.Items, resp.JSON200.NextAfter, nil
 	})
 }
