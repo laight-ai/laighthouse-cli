@@ -266,7 +266,7 @@ func TestUploadRejectsWrongExtension(t *testing.T) {
 
 func TestInviteByEmailAndRoleName(t *testing.T) {
 	f := setup(t)
-	out, err := run(t, f, "--json", "invite", "kim@x.com", "lee@x.com", "--role", "마케터", "--brand", "브랜드A", "--ttl", "3d")
+	out, err := run(t, f, "--json", "invite", "kim@x.com", "lee@x.com", "--role", "마케터", "--scope", "브랜드A", "--ttl", "3d")
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}

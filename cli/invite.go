@@ -18,7 +18,7 @@ import (
 func newInviteCmd(g *Env) *cobra.Command {
 	var (
 		roleQ     string
-		brands    []string
+		scopes    []string
 		ttlText   string
 		replace   bool
 		expText   string
@@ -32,8 +32,8 @@ func newInviteCmd(g *Env) *cobra.Command {
 POST /api/authz/invites
 
 --role에는 역할 이름 전체나 ID를 씁니다('` + binName + ` roles'로 확인).
---brand를 주면 그 브랜드나 노드('brands tree'의 그룹 등)로 범위가 제한되고, 없으면 조직 전체 범위입니다.
---brand에는 이름 전체나 ID를 씁니다. 보관된 노드에는 초대할 수 없습니다.
+--scope를 주면 권한 범위가 그 노드('brands tree'의 브랜드나 그 위 그룹 등)로 제한되고, 없으면 조직 전체 범위입니다.
+--scope에는 노드 이름 전체나 ID를 씁니다. 보관된 노드에는 초대할 수 없습니다.
 이미 초대한 주소면 실패합니다. 메일만 다시 보내려면 'invite resend <ID>',
 조건을 바꿔 새로 보내려면 --replace를 붙이세요.
 --expires는 초대받은 사람의 접근이 끝나는 날(그날 23:59:59까지)입니다. 외부 역할이면 꼭 정해야 하고,
@@ -44,7 +44,7 @@ POST /api/authz/invites
 보낸 초대는 'invite list'로 보고 'invite revoke <ID>'로 취소합니다.
 필요 권한: member.invite`,
 		Example: `  ` + binName + ` invite kim@example.com --role 마케터
-  ` + binName + ` invite kim@example.com lee@example.com --role 마케터 --brand 브랜드A --ttl 3d
+  ` + binName + ` invite kim@example.com lee@example.com --role 마케터 --scope 브랜드A --ttl 3d
   ` + binName + ` invite partner@agency.com --role 대행사 --expires 2026-12-31 --approver boss@example.com`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -111,7 +111,7 @@ POST /api/authz/invites
 				}
 				base.Approval = &api.ApprovalFilingInput{ApproverUids: uids}
 			}
-			if len(brands) > 0 {
+			if len(scopes) > 0 {
 				// 웹처럼 브랜드뿐 아니라 트리의 어느 노드든 범위로 줄 수 있다. 역할이 그 단계에 줄 수 있는지는 서버가 본다.
 				resp, err := c.ListResourcesWithResponse(ctx)
 				if err != nil {
@@ -123,8 +123,8 @@ POST /api/authz/invites
 				if resp.JSON200 == nil {
 					return fmt.Errorf("리소스 트리 응답을 읽지 못했습니다 (HTTP %d)", resp.StatusCode())
 				}
-				ids := make([]string, 0, len(brands))
-				for _, q := range brands {
+				ids := make([]string, 0, len(scopes))
+				for _, q := range scopes {
 					id, err := pickScopeNode(resp.JSON200.Items, q)
 					if err != nil {
 						return err
@@ -187,7 +187,7 @@ POST /api/authz/invites
 		},
 	}
 	cmd.Flags().StringVar(&roleQ, "role", "", "부여할 역할 이름 전체 또는 ID (필수)")
-	cmd.Flags().StringArrayVarP(&brands, "brand", "b", nil, "범위를 제한할 브랜드나 트리 노드의 이름 전체 또는 ID (여러 번 지정 가능)")
+	cmd.Flags().StringArrayVar(&scopes, "scope", nil, "권한 범위로 줄 트리 노드의 이름 전체 또는 ID (여러 번 지정 가능)")
 	cmd.Flags().StringVar(&ttlText, "ttl", "14d", "초대 링크 유효 기간 (예: 12h, 7d. 1h ~ 30d)")
 	cmd.Flags().BoolVar(&replace, "replace", false, "이미 초대한 주소면 기존 초대를 이번 조건으로 바꿔 다시 보냄")
 	cmd.Flags().StringVar(&expText, "expires", "", "접근 만료일 YYYY-MM-DD (그날 23:59:59까지. 외부 역할이면 필수)")
