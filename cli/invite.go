@@ -31,7 +31,7 @@ func newInviteCmd(g *Env) *cobra.Command {
 POST /api/authz/invites
 
 --role에는 역할 이름 전체나 ID를 씁니다('` + binName + ` roles'로 확인).
---brand를 주면 그 브랜드로 범위가 제한되고, 없으면 조직 전체 범위입니다.
+--brand를 주면 그 브랜드나 노드('brands tree'의 그룹 등)로 범위가 제한되고, 없으면 조직 전체 범위입니다.
 이미 초대한 주소면 실패합니다. 메일만 다시 보내려면 'invite resend <ID>',
 조건을 바꿔 새로 보내려면 --replace를 붙이세요.
 --expires는 초대받은 사람의 접근이 끝나는 날(그날 23:59:59까지)입니다. 외부 역할이면 꼭 정해야 하고,
@@ -110,13 +110,21 @@ POST /api/authz/invites
 				base.Approval = &api.ApprovalFilingInput{ApproverUids: uids}
 			}
 			if len(brands) > 0 {
+				// 웹처럼 브랜드뿐 아니라 트리의 어느 노드든 범위로 줄 수 있다. 역할이 그 단계에 줄 수 있는지는 서버가 본다.
+				resp, err := c.ListResourcesWithResponse(ctx)
+				if err != nil {
+					return err
+				}
+				if err := CheckStatus(resp.HTTPResponse, resp.Body); err != nil {
+					return err
+				}
 				ids := make([]string, 0, len(brands))
 				for _, q := range brands {
-					b, err := findBrand(ctx, c, q)
+					id, err := pickNode(resp.JSON200.Items, q)
 					if err != nil {
 						return err
 					}
-					ids = append(ids, b.Uid)
+					ids = append(ids, id)
 				}
 				base.ScopeType = api.BindingScopeTypeResource
 				base.ScopeResourceIds = &ids
@@ -171,8 +179,8 @@ POST /api/authz/invites
 		},
 	}
 	cmd.Flags().StringVar(&roleQ, "role", "", "부여할 역할 이름 전체 또는 ID (필수)")
-	cmd.Flags().StringArrayVarP(&brands, "brand", "b", nil, "범위를 제한할 브랜드 이름 또는 ID (여러 번 지정 가능)")
-	cmd.Flags().StringVar(&ttlText, "ttl", "7d", "초대 링크 유효 기간 (예: 12h, 7d. 1h ~ 30d)")
+	cmd.Flags().StringArrayVarP(&brands, "brand", "b", nil, "범위를 제한할 브랜드나 트리 노드의 이름 또는 ID (여러 번 지정 가능)")
+	cmd.Flags().StringVar(&ttlText, "ttl", "14d", "초대 링크 유효 기간 (예: 12h, 7d. 1h ~ 30d)")
 	cmd.Flags().BoolVar(&replace, "replace", false, "이미 초대한 주소면 기존 초대를 이번 조건으로 바꿔 다시 보냄")
 	cmd.Flags().StringVar(&expText, "expires", "", "접근 만료일 YYYY-MM-DD (그날 23:59:59까지. 외부 역할이면 필수)")
 	cmd.Flags().StringArrayVar(&approvers, "approver", nil, "결재 승인자 이메일 또는 UID (여러 번 지정 가능. 정책이 승인자 지정을 요구할 때)")

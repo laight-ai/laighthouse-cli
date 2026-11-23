@@ -131,3 +131,26 @@ func TestInviteApproverResolvesEmail(t *testing.T) {
 		t.Fatal("승인자를 못 찾으면 요청을 보내지 않아야 합니다")
 	}
 }
+
+// --ttl이 없으면 초대 링크 기간은 웹과 같은 14일이다.
+func TestInviteDefaultTTLMatchesWeb(t *testing.T) {
+	f := setup(t)
+	if _, err := run(t, f, "invite", "kim@y.com", "--role", "마케터"); err != nil {
+		t.Fatal(err)
+	}
+	if ttl := lastInviteBody(t, f)["token_ttl_seconds"]; ttl != float64(14*24*3600) {
+		t.Fatalf("기본 링크 기간은 14일이어야 하는데 %v초", ttl)
+	}
+}
+
+// --brand는 웹처럼 브랜드뿐 아니라 트리의 상위 노드도 범위로 고른다.
+func TestInviteBrandAcceptsTreeNode(t *testing.T) {
+	f := setup(t)
+	if _, err := run(t, f, "invite", "kim@y.com", "--role", "마케터", "--brand", "그룹1", "--brand", "b1"); err != nil {
+		t.Fatal(err)
+	}
+	body := lastInviteBody(t, f)
+	if body["scope_type"] != "resource" || !reflect.DeepEqual(body["scope_resource_ids"], []any{"g1", "b1"}) {
+		t.Fatalf("범위가 g1, b1이어야 하는데 %v %v", body["scope_type"], body["scope_resource_ids"])
+	}
+}
