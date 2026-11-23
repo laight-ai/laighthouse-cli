@@ -120,7 +120,8 @@ func newBrandsTreeCmd(g *Env) *cobra.Command {
 		Use:   "tree",
 		Short: "조직의 브랜드 트리 (GET /api/authz/resources)",
 		Long: `조직의 리소스 트리를 들여쓰기로 보여 줍니다. 웹의 "광고주" 화면과 같습니다.
-잎 노드가 브랜드이며, 레벨 이름(예: 그룹 > 사업부 > 브랜드)은 조직마다 다릅니다.`,
+브랜드는 데이터(마트)를 직접 가진 노드로, 'brands' 목록에 나오는 노드입니다. 트리의 깊이와는 상관이 없어서
+잎 노드가 아닐 수도 있고 잎 노드라고 다 브랜드인 것도 아닙니다. 레벨 이름(예: 그룹 > 사업부 > 브랜드)은 조직마다 다릅니다.`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			c, err := g.apiClient()

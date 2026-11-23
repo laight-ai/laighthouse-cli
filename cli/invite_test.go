@@ -131,3 +131,62 @@ func TestInviteApproverResolvesEmail(t *testing.T) {
 		t.Fatal("승인자를 못 찾으면 요청을 보내지 않아야 합니다")
 	}
 }
+
+// --ttl이 없으면 초대 링크 기간은 웹과 같은 14일이다.
+func TestInviteDefaultTTLMatchesWeb(t *testing.T) {
+	f := setup(t)
+	if _, err := run(t, f, "invite", "kim@y.com", "--role", "마케터"); err != nil {
+		t.Fatal(err)
+	}
+	if ttl := lastInviteBody(t, f)["token_ttl_seconds"]; ttl != float64(14*24*3600) {
+		t.Fatalf("기본 링크 기간은 14일이어야 하는데 %v초", ttl)
+	}
+}
+
+// --scope는 웹처럼 브랜드뿐 아니라 트리의 상위 노드도 범위로 고른다.
+func TestInviteScopeAcceptsTreeNode(t *testing.T) {
+	f := setup(t)
+	if _, err := run(t, f, "invite", "kim@y.com", "--role", "마케터", "--scope", "그룹1", "--scope", "b1"); err != nil {
+		t.Fatal(err)
+	}
+	body := lastInviteBody(t, f)
+	if body["scope_type"] != "resource" || !reflect.DeepEqual(body["scope_resource_ids"], []any{"g1", "b1"}) {
+		t.Fatalf("범위가 g1, b1이어야 하는데 %v %v", body["scope_type"], body["scope_resource_ids"])
+	}
+}
+
+// 권한을 주는 범위라 이름 일부만 맞는 노드, 보관된 노드는 고르지 않는다. 같은 노드를 두 번 적으면 한 번만 보낸다.
+func TestInviteScopePicksExactActiveNode(t *testing.T) {
+	f := setup(t)
+	for _, tc := range []struct{ q, want string }{
+		{"그룹", "이름 전체"},     // 그룹1의 일부
+		{"g9", "보관"},        // 보관된 그룹1
+		{"기타", "ID로 지정하세요"}, // 같은 이름의 노드 e1, e2
+	} {
+		_, err := run(t, f, "invite", "kim@y.com", "--role", "마케터", "--scope", tc.q)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("--scope %s: %q가 든 오류를 기대했는데 %v", tc.q, tc.want, err)
+		}
+	}
+	if n := len(f.seen("POST", "/api/authz/invites")); n != 0 {
+		t.Fatalf("초대를 보내지 않아야 하는데 %d번 보냄", n)
+	}
+	if _, err := run(t, f, "invite", "kim@y.com", "--role", "마케터", "--scope", "그룹1", "--scope", "g1"); err != nil {
+		t.Fatal(err)
+	}
+	if ids := lastInviteBody(t, f)["scope_resource_ids"]; !reflect.DeepEqual(ids, []any{"g1"}) {
+		t.Fatalf("범위가 g1 하나여야 하는데 %v", ids)
+	}
+}
+
+// 초대 범위는 브랜드가 아닌 노드도 받으므로 --brand가 아니라 --scope다. --brand는 받지 않는다.
+func TestInviteRejectsBrandFlag(t *testing.T) {
+	f := setup(t)
+	_, err := run(t, f, "invite", "kim@y.com", "--role", "마케터", "--brand", "b1")
+	if err == nil || !strings.Contains(err.Error(), "brand") {
+		t.Fatalf("알 수 없는 플래그 오류를 기대했는데 %v", err)
+	}
+	if n := len(f.seen("POST", "/api/authz/invites")); n != 0 {
+		t.Fatalf("초대를 보내지 않아야 하는데 %d번 보냄", n)
+	}
+}

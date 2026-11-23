@@ -241,9 +241,18 @@ func TestUploadPicksOnlyExcelConnection(t *testing.T) {
 	if !strings.Contains(out, `"upload_id": 42`) {
 		t.Fatalf("202 본문을 출력해야 하는데: %s", out)
 	}
-	// 매체 이름으로 골라도 같은 연결이다.
-	if _, err := run(t, f, "upload", file, "--brand", "b1", "--date", "2026-10-01", "--connection", "naver"); err != nil {
+	// 매체 이름으로 골라도 같은 연결이다. 대소문자는 가리지 않는다.
+	if _, err := run(t, f, "upload", file, "--brand", "b1", "--date", "2026-10-01", "--connection", "NAVER"); err != nil {
 		t.Fatal(err)
+	}
+	// 이름 일부만 맞으면 고르지 않는다. 다른 매체의 연결에 파일이 올라가면 안 된다.
+	before := len(f.seen("POST", "/api/resources/b1/data-uploads"))
+	_, err = run(t, f, "upload", file, "--brand", "b1", "--date", "2026-10-01", "--connection", "nav")
+	if err == nil || !strings.Contains(err.Error(), "naver") {
+		t.Fatalf("있는 연결을 보여 주는 오류를 기대했는데 %v", err)
+	}
+	if n := len(f.seen("POST", "/api/resources/b1/data-uploads")); n != before {
+		t.Fatalf("업로드하지 않아야 하는데 %d번 더 보냄", n-before)
 	}
 }
 
@@ -257,7 +266,7 @@ func TestUploadRejectsWrongExtension(t *testing.T) {
 
 func TestInviteByEmailAndRoleName(t *testing.T) {
 	f := setup(t)
-	out, err := run(t, f, "--json", "invite", "kim@x.com", "lee@x.com", "--role", "마케터", "--brand", "브랜드A", "--ttl", "3d")
+	out, err := run(t, f, "--json", "invite", "kim@x.com", "lee@x.com", "--role", "마케터", "--scope", "브랜드A", "--ttl", "3d")
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
