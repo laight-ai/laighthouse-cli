@@ -35,7 +35,7 @@ func newUploadCmd(g *Env) *cobra.Command {
 POST /api/resources/{brand}/data-uploads
 
 파일은 브랜드의 "엑셀 연결"(어떤 매체의 파일인지)에 붙습니다. 연결이 하나뿐이면 자동으로 고르고,
-여럿이면 --connection에 매체 이름이나 연결 ID를 적습니다('upload connections'로 확인).
+여럿이면 --connection에 매체 이름 전체나 연결 ID를 적습니다('upload connections'로 확인).
 --date는 파일에 날짜 열이 없는 매체에서 기준일을 정할 때 씁니다.
 
 파일은 서버에서 비동기로 처리됩니다. --wait를 붙이면 끝날 때까지 기다리고,
@@ -142,7 +142,7 @@ POST /api/resources/{brand}/data-uploads
 		},
 	}
 	brandFlag(cmd, &brand)
-	cmd.Flags().StringVarP(&connection, "connection", "c", "", "엑셀 연결의 매체 이름 또는 ID (연결이 하나면 생략)")
+	cmd.Flags().StringVarP(&connection, "connection", "c", "", "엑셀 연결의 매체 이름 전체 또는 ID (연결이 하나면 생략)")
 	cmd.Flags().StringVar(&reportDate, "date", "", "기준일 (YYYY-MM-DD). 날짜 열이 없는 매체에서 필요")
 	cmd.Flags().BoolVar(&wait, "wait", false, "처리가 끝날 때까지 기다림")
 	cmd.AddCommand(newUploadHistoryCmd(g), newUploadStatusCmd(g), newUploadConnectionsCmd(g))
@@ -166,22 +166,34 @@ func excelConnections(ctx context.Context, c *api.ClientWithResponses, brandID s
 	return excel, nil
 }
 
-// pickConnection은 --connection 값(매체 이름 또는 ID)으로 엑셀 연결을 고른다. 값이 없고 연결이 하나뿐이면 그것을 쓴다.
+// pickConnection은 --connection 값(매체 이름 전체(대소문자 무시) 또는 ID)으로 엑셀 연결을 고른다.
+// 다른 매체의 연결에 파일을 올리지 않게 Pick과 달리 이름 일부만 맞는 연결은 고르지 않는다.
+// 값이 없고 연결이 하나뿐이면 그것을 쓴다.
 func pickConnection(conns []api.MediaConnectionResponse, q string) (api.MediaConnectionResponse, error) {
+	if q == "" && len(conns) == 1 {
+		return conns[0], nil
+	}
+	if len(conns) == 0 {
+		return api.MediaConnectionResponse{}, errors.New("이 브랜드에 엑셀 연결이 없습니다. 웹의 데이터 업로드 화면에서 매체를 먼저 연결하세요")
+	}
+	names := make([]string, 0, len(conns))
+	for _, mc := range conns {
+		names = append(names, fmt.Sprintf("%s(%d)", mc.Media, mc.Id))
+	}
 	if q == "" {
-		switch len(conns) {
-		case 1:
-			return conns[0], nil
-		case 0:
-			return api.MediaConnectionResponse{}, errors.New("이 브랜드에 엑셀 연결이 없습니다. 웹의 데이터 업로드 화면에서 매체를 먼저 연결하세요")
-		}
-		names := make([]string, 0, len(conns))
-		for _, mc := range conns {
-			names = append(names, fmt.Sprintf("%s(%d)", mc.Media, mc.Id))
-		}
 		return api.MediaConnectionResponse{}, fmt.Errorf("엑셀 연결이 여러 개입니다. --connection으로 고르세요: %s", strings.Join(names, ", "))
 	}
-	return Pick("엑셀 연결", q, conns,
+	var exact []api.MediaConnectionResponse
+	for _, mc := range conns {
+		if strconv.Itoa(mc.Id) == q || strings.EqualFold(mc.Media, q) {
+			exact = append(exact, mc)
+		}
+	}
+	if len(exact) == 0 {
+		return api.MediaConnectionResponse{}, fmt.Errorf("매체 이름이나 ID가 %q인 엑셀 연결이 없습니다. 매체 이름 전체를 적으세요. 있는 연결: %s", q, strings.Join(names, ", "))
+	}
+	// 하나면 그것을, 같은 매체의 연결이 여럿이면 ID로 지정하라는 오류를 Pick이 돌려준다.
+	return Pick("엑셀 연결", q, exact,
 		func(mc api.MediaConnectionResponse) string { return strconv.Itoa(mc.Id) },
 		func(mc api.MediaConnectionResponse) string { return mc.Media })
 }
